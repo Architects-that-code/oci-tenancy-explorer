@@ -1,0 +1,36 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.Python
+.venv/
+venv/
+.pytest_cache/
+
+# Local generated data
+fleet_data.json
+fleet_data.json.backup
+fleet_data.json.large
+fleet_data.local.json
+reboot_tracker.zip
+generate_large_test_fleet.py
+
+# Optional local exports and logs
+*.csv
+*.log
+refresh.log
+*.zip
+
+# OCI credentials and secrets
+*.pem
+*.key
+*.token
+.env
+.env.*
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform/
+vars

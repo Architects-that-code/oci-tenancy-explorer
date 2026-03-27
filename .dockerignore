@@ -1,0 +1,24 @@
+.git
+.gitignore
+.github
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Local generated data and exports
+fleet_data.json
+fleet_data.json.backup
+fleet_data.json.large
+fleet_data.local.json
+*.csv
+*.log
+refresh.log
+
+# Credentials and secrets
+.env
+.env.*
+*.pem
+*.key
+*.token

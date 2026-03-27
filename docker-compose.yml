@@ -1,0 +1,18 @@
+services:
+  oci-tenancy-explorer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: oci-tenancy-explorer:latest
+    container_name: oci-tenancy-explorer
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      OCI_AUTH: "${OCI_AUTH:-config}"
+      OCI_PROFILE: "${OCI_PROFILE:-DEFAULT}"
+      OCI_CONFIG_FILE: "${OCI_CONFIG_FILE:-/home/appuser/.oci/config}"
+      PORT: "8080"
+    volumes:
+      - "${HOME}/.oci:/home/appuser/.oci:ro"
+      - "${HOME}/.ssh:/home/appuser/.ssh:ro"
+    restart: unless-stopped

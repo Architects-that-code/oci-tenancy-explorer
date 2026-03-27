@@ -1,0 +1,7 @@
+services:
+  oci-tenancy-explorer:
+    environment:
+      OCI_AUTH: instance_principal
+    network_mode: host
+    ports: []
+    volumes: []

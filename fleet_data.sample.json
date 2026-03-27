@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "generatedAtEpochMs": 1767225600000,
+  "schemaVersion": 2,
+  "source": {
+    "type": "oci-sdk",
+    "auth": "config",
+    "profile": "DEFAULT",
+    "customerStrategy": "tenancy",
+    "regions": [
+      "us-ashburn-1"
+    ]
+  },
+  "customers": [
+    {
+      "name": "Example Tenancy",
+      "lastImport": 1767225600000,
+      "instanceCount": 1,
+      "scheduledCount": 1,
+      "completedCount": 0,
+      "changedCount": 1
+    }
+  ],
+  "instances": [
+    {
+      "customerId": "Example Tenancy",
+      "ID": "ocid1.instance.oc1.region.uniqueidexample",
+      "Display_Name": "example-app-01",
+      "Shape": "VM.Standard.E5.Flex",
+      "State": "RUNNING",
+      "Availability_Domain": "Example-AD-1",
+      "Fault_Domain": "FAULT-DOMAIN-1",
+      "Time_Created": "2026-01-01 00:00:00",
+      "Compartment_ID": "ocid1.compartment.oc1..exampleuniqueid",
+      "Compartment_Name": "Example Compartment",
+      "Tenant_ID": "ocid1.tenancy.oc1..exampleuniqueid",
+      "Region": "us-ashburn-1",
+      "Host_ID": "",
+      "Maintenance_Reboot_Due": "Yes",
+      "Maintenance_UTC": "2026-01-15 12:00:00",
+      "Maintenance_IST": "2026-01-15 17:30",
+      "Maintenance_EDT": "2026-01-15 08:00",
+      "Maintenance_Source": "Instance Maintenance Event",
+      "Maintenance_Action": "Reboot Migration",
+      "Maintenance_Event_Status": "Scheduled",
+      "Maintenance_Category": "Infrastructure Maintenance",
+      "Maintenance_Reason": "Example scheduled maintenance event",
+      "Maintenance_Event_OCID": "ocid1.instancemaintenanceevent.oc1..exampleuniqueid",
+      "Live_Migration_Preference": "Use Live Migration If Possible",
+      "Last_Reboot_UTC": "",
+      "Last_Reboot_IST": "-",
+      "Last_Reboot_EDT": "-",
+      "Reboot_Evidence": "-",
+      "reboot_status": "Scheduled",
+      "Previous_Status": "Not Scheduled",
+      "Status_Change_Signal": "Not Scheduled -> Scheduled",
+      "Status_Changed_UTC": "2026-01-01 00:00:00",
+      "uniqueKey": "Example Tenancy_ocid1.instance.oc1.region.uniqueidexample",
+      "freeformTags": {},
+      "definedTags": {},
+      "Last_Seen_UTC": "2026-01-01 00:00:00"
+    }
+  ]
+}

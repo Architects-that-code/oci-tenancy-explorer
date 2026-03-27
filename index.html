@@ -1,0 +1,1742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCI Tenancy Explorer | Prototype</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="shortcut icon" href="./favicon.svg">
+    <link rel="apple-touch-icon" href="./favicon.svg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --oci-red: #c74634;
+            --oci-red-deep: #9f3022;
+            --oci-red-soft: #fdf1ef;
+            --oci-ink: #1f1b1a;
+            --oci-steel: #5f5956;
+            --oci-line: #e7dfdb;
+            --oci-panel: #fffdfa;
+            --oci-bg: #f7f4f2;
+        }
+
+        /* SCROLLBAR & LAYOUT */
+        html {
+            font-family: "Oracle Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-variant-numeric: tabular-nums;
+            font-size: 14px;
+        }
+        body {
+            font-family: "Oracle Sans", "OracleSans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background:
+                radial-gradient(circle at top right, rgba(199, 70, 52, 0.08), transparent 22%),
+                linear-gradient(180deg, #fbf9f8 0%, var(--oci-bg) 100%);
+            color: var(--oci-ink);
+            padding: 0;
+            margin: 0;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f3eeeb; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #d0c3bc; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #b29f95; }
+        
+        .table-container { overflow-x: auto; position: relative; width: 100%; border-radius: 12px; }
+        th, td { white-space: nowrap; border-right: 1px solid #f2ebe7; }
+        th.sortable { cursor: pointer; transition: background 0.2s; position: relative; }
+        th.sortable:hover { background: #fbf1ee; color: var(--oci-red); }
+        
+        /* STATUS TAGS */
+        .status-scheduled { background-color: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
+        .status-not-scheduled { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        .status-completed { background-color: #dcfce7; color: #166534; border: 1px solid #22c55e; }
+        .status-signal-changed { background-color: #fdf1ef; color: var(--oci-red); border: 1px solid #e8a398; }
+        .status-signal-stable { background-color: #fbf8f6; color: #6e655f; border: 1px solid #d7cbc4; }
+        .row-signal-changed { background: linear-gradient(90deg, rgba(253,241,239,0.95) 0%, rgba(255,255,255,1) 14%); }
+        
+        /* INTERACTIVES */
+        .copy-btn { opacity: 0.3; transition: all 0.15s; cursor: pointer; }
+        .copy-btn:hover { opacity: 1; color: var(--oci-red); transform: scale(1.1); }
+        .copy-icon-btn {
+            display: inline-flex;
+            align-items: flex-start;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 1.35rem;
+            height: 1.35rem;
+            padding: 0.1rem;
+            border-radius: 0.5rem;
+            border: 1px solid transparent;
+            color: #94a3b8;
+            background: transparent;
+            transition: all 0.15s ease;
+            cursor: pointer;
+        }
+        .copy-icon-btn:hover {
+            color: var(--oci-red);
+            background: var(--oci-red-soft);
+            border-color: #efc6be;
+            transform: translateY(-1px);
+        }
+        .highlight { background-color: #fef08a; color: #000; font-weight: 600; padding: 0 1px; }
+        
+        /* MODALS & ANIMATION */
+        .modal-overlay { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade { animation: fadeIn 0.25s ease-out forwards; }
+
+        .pulse-dot {
+            width: 8px; height: 8px; background-color: #10b981;
+            border-radius: 50%; display: inline-block;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        
+        .sort-indicator { margin-left: 4px; font-size: 10px; opacity: 0.3; }
+        .sort-active { opacity: 1; color: var(--oci-red); font-weight: bold; }
+        .refresh-log {
+            background: #1b1715;
+            color: #f7f4f2;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .refresh-log-line {
+            display: block;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .refresh-log-warning {
+            color: #fde68a;
+        }
+        .refresh-log-error {
+            color: #fca5a5;
+        }
+        .refresh-status-running { background: var(--oci-red-soft); color: var(--oci-red); border: 1px solid #efc6be; }
+        .refresh-status-success { background: #ecfdf3; color: #166534; border: 1px solid #86efac; }
+        .refresh-status-error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+        .refresh-spinner {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.1rem;
+            color: var(--oci-red);
+            font-weight: 900;
+        }
+
+        #app > header {
+            background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,251,249,0.98) 100%);
+            border: 1px solid var(--oci-line);
+            border-top: 4px solid var(--oci-red);
+            box-shadow: 0 18px 32px rgba(46, 35, 29, 0.08);
+        }
+        #app > header h1,
+        #active-customer-name,
+        #panel-title,
+        #about-modal h2,
+        #stats-ribbon .text-4xl {
+            letter-spacing: -0.03em;
+        }
+        #app > header h1 {
+            color: var(--oci-ink);
+        }
+        #app > header img {
+            filter: drop-shadow(0 4px 10px rgba(199, 70, 52, 0.18));
+        }
+        #sync-indicator {
+            background: var(--oci-red-soft) !important;
+            border-color: #efc6be !important;
+            color: var(--oci-red) !important;
+        }
+        #json-source-link,
+        #header-refresh-action,
+        #app > header button[onclick="App.toggleAbout(true)"] {
+            color: var(--oci-red) !important;
+        }
+        #json-source-link:hover,
+        #header-refresh-action:hover,
+        #app > header button[onclick="App.toggleAbout(true)"]:hover {
+            color: var(--oci-red-deep) !important;
+        }
+        #back-to-home {
+            background: #f5efeb !important;
+            color: var(--oci-steel) !important;
+        }
+        #export-filtered-btn {
+            background: #1f1b1a !important;
+            box-shadow: 0 12px 20px rgba(31, 27, 26, 0.16);
+        }
+        #export-filtered-btn:hover {
+            background: #37312f !important;
+        }
+        #stats-ribbon > div,
+        main > aside > div,
+        main > section > div,
+        #detail-panel {
+            background: var(--oci-panel) !important;
+            border-color: var(--oci-line) !important;
+            box-shadow: 0 10px 24px rgba(38, 30, 26, 0.05) !important;
+        }
+        #stats-ribbon > div:nth-child(4) {
+            background: var(--oci-red-soft) !important;
+            border-color: #efc6be !important;
+        }
+        #stats-ribbon > div:nth-child(4) p:last-child,
+        #stats-ribbon > div:nth-child(4) p:first-child {
+            color: var(--oci-red) !important;
+        }
+        #stats-ribbon > div:nth-child(5) {
+            background: linear-gradient(180deg, var(--oci-red) 0%, var(--oci-red-deep) 100%) !important;
+        }
+        #stats-ribbon > div:nth-child(6) {
+            background: linear-gradient(180deg, #2a2523 0%, #1b1715 100%) !important;
+        }
+        #table-head {
+            background: #f4efec !important;
+        }
+        #table-body tr:hover {
+            background: #fcf4f1 !important;
+        }
+        #detail-panel > div:first-child,
+        #about-modal > div > div:first-child {
+            background: linear-gradient(135deg, #241f1d 0%, #3a2a24 100%) !important;
+        }
+        #detail-panel h2,
+        #about-modal p.text-blue-400 {
+            color: #f29c8e !important;
+        }
+        #about-modal .bg-blue-600,
+        #about-modal .bg-green-600,
+        #about-modal .bg-amber-500 {
+            background-color: var(--oci-red) !important;
+        }
+        #about-modal .border-amber-100,
+        #about-modal .border-green-100,
+        #about-modal .border-slate-100 {
+            border-color: var(--oci-line) !important;
+        }
+        #about-modal .text-blue-600,
+        #about-modal .text-emerald-600 {
+            color: var(--oci-red) !important;
+        }
+        #clear-filters-btn {
+            color: var(--oci-red) !important;
+            border-color: #efc6be !important;
+        }
+        #clear-filters-btn:hover {
+            background: var(--oci-red-soft) !important;
+        }
+        #search-input:focus,
+        #filter-reboot_status:focus,
+        #filter-Status_Change_Signal:focus,
+        #filter-Compartment_Name:focus,
+        #filter-Region:focus,
+        #filter-Availability_Domain:focus,
+        #filter-Fault_Domain:focus {
+            border-color: var(--oci-red);
+            box-shadow: 0 0 0 3px rgba(199, 70, 52, 0.12);
+        }
+        #filter-reboot_status,
+        #filter-Status_Change_Signal,
+        #filter-Compartment_Name,
+        #filter-Region,
+        #filter-Availability_Domain,
+        #filter-Fault_Domain,
+        #filter-Shape,
+        #search-input {
+            background: #fcfaf9;
+            border-color: var(--oci-line);
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen">
+
+    <div id="app" class="max-w-[1920px] mx-auto px-4 py-4">
+        <header class="flex justify-between items-center mb-6 bg-white px-6 py-5 rounded-2xl shadow-sm border border-slate-200">
+            <div class="flex items-center gap-6 cursor-pointer" onclick="App.exitToDashboard()">
+                <div class="bg-white p-3 rounded-2xl flex items-center justify-center shadow-xl border border-[#e7dfdb]">
+                    <img src="https://oracle.gallerycdn.vsassets.io/extensions/oracle/oci-core/1.0.5/1715101068442/Microsoft.VisualStudio.Services.Icons.Default" class="w-8 h-8 object-contain">
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black tracking-tighter uppercase leading-none">OCI Tenancy Explorer</h1>
+                    <div class="flex items-center gap-2 mt-2">
+                        <div id="customer-breadcrumb" class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Tenancy-Wide Visibility And Operational Signals</div>
+                        <span class="text-slate-300 text-[8px]">●</span>
+                        <button onclick="App.toggleAbout(true)" class="text-[10px] font-black text-blue-600 uppercase hover:text-blue-800 tracking-widest transition-all">About</button>
+                        <div id="sync-indicator" class="hidden flex items-center justify-center ml-4 w-8 h-8 bg-blue-50 border border-blue-100 rounded-full" aria-label="JSON source active" title="JSON source active">
+                            <span class="pulse-dot"></span>
+                        </div>
+                        <div id="header-refresh-wrapper" class="relative flex items-center gap-2 group">
+                            <button id="header-refresh-action" class="flex items-center gap-1.5 text-[10px] font-black uppercase hover:text-sky-800 tracking-widest transition-all" type="button">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M5.64 18.36A9 9 0 1020 8.5"></path>
+                                </svg>
+                                <span>Refresh Data</span>
+                            </button>
+                            <div class="relative">
+                                <button type="button" class="w-4 h-4 rounded-full border border-[#efc6be] text-[9px] font-black text-[#c74634] bg-white/90 flex items-center justify-center cursor-help" aria-label="Refresh data info">i</button>
+                                <div class="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-80 -translate-x-1/2 rounded-2xl border border-[#efc6be] bg-white p-4 text-[11px] normal-case tracking-normal text-slate-600 shadow-2xl group-hover:block">
+                                    Clicking <b>Refresh Data</b> opens the OCI Refresh Console. From there you can run the collector on the host serving this portal, rebuild <code>fleet_data.json</code>, stream live log output, and reload the dashboard with the newest OCI snapshot.
+                                </div>
+                            </div>
+                        </div>
+                        <a id="json-source-link" href="./fleet_data.json" target="_blank" rel="noopener noreferrer" class="hidden text-[10px] font-black text-sky-600 uppercase hover:text-sky-800 tracking-widest transition-all">View Source JSON</a>
+                        <div id="json-generated-at" class="hidden text-[10px] font-black text-slate-400 uppercase tracking-widest"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button id="back-to-home" class="hidden px-7 py-3.5 text-[10px] font-black uppercase tracking-widest text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">← Home</button>
+            </div>
+        </header>
+
+        <div id="view-dashboard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade">
+            </div>
+
+        <div id="view-portal" class="hidden space-y-6 animate-fade">
+            <div class="flex items-center justify-between ml-1">
+                <div class="flex items-center gap-4">
+                    <div class="h-10 w-2 bg-blue-600 rounded-full"></div>
+                    <div>
+                        <h2 id="active-customer-name" class="text-3xl font-black text-slate-800 tracking-tighter leading-none">Customer Portal</h2>
+                        <p class="text-[11px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1.5">Selected OCI Tenancy</p>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button id="export-filtered-btn" class="bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-md">Export CSV (respects filtered view)</button>
+                </div>
+            </div>
+
+            <div id="stats-ribbon" class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Completed</p>
+                    <p id="stat-completed" class="text-4xl font-black text-green-600 leading-none">0</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Scheduled</p>
+                    <div class="flex items-baseline gap-2">
+                        <p id="stat-scheduled" class="text-4xl font-black text-amber-600 leading-none">0</p>
+                        <span class="pulse-dot"></span>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Not Scheduled</p>
+                    <p id="stat-not-scheduled" class="text-4xl font-black text-slate-300 leading-none">0</p>
+                </div>
+                <div class="bg-sky-50 p-6 rounded-2xl border border-sky-200 shadow-sm">
+                    <p class="text-[10px] font-black text-sky-500 uppercase tracking-widest mb-1">Changed</p>
+                    <p id="stat-changed" class="text-4xl font-black text-sky-600 leading-none">0</p>
+                </div>
+                <div class="bg-blue-600 p-6 rounded-2xl shadow-xl text-white">
+                    <p class="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Matched</p>
+                    <p id="stat-filtered" class="text-4xl font-black leading-none">0</p>
+                </div>
+                <div class="bg-slate-800 p-6 rounded-2xl shadow-xl text-white">
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Assets</p>
+                    <p id="stat-total" class="text-4xl font-black leading-none">0</p>
+                </div>
+            </div>
+
+            <main class="flex flex-col xl:flex-row gap-6">
+                <aside class="w-full xl:w-80 space-y-4 shrink-0">
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Quick Search</label>
+                            <input type="text" id="search-input" placeholder="OCID, Name, or IP..." class="w-full px-4 py-3.5 rounded-xl border border-slate-200 text-xs bg-slate-50 outline-none focus:border-blue-500 focus:bg-white transition-all font-medium">
+                        </div>
+                        <div class="space-y-3">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Attribute Filters</label>
+                            <select id="filter-reboot_status" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-[10px] font-black uppercase bg-slate-50 appearance-none"></select>
+                            <select id="filter-Status_Change_Signal" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-[10px] font-black uppercase bg-slate-50 appearance-none"></select>
+                            <select id="filter-Compartment_Name" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-[10px] font-black uppercase bg-slate-50 appearance-none"></select>
+                            <select id="filter-Region" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-[10px] font-black uppercase bg-slate-50 appearance-none"></select>
+                            <select id="filter-Availability_Domain" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-[10px] font-black uppercase bg-slate-50 appearance-none"></select>
+                            <select id="filter-Fault_Domain" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-[10px] font-black uppercase bg-slate-50 appearance-none"></select>
+                            <select id="filter-Shape" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-[10px] font-black uppercase bg-slate-50 appearance-none"></select>
+                        </div>
+                        <button id="clear-filters-btn" class="w-full py-3 text-[10px] font-black text-blue-600 uppercase hover:bg-blue-50 rounded-xl border border-blue-100 transition-colors">Clear All Filters</button>
+                    </div>
+
+                </aside>
+
+                <section class="flex-grow min-w-0 flex flex-col gap-4 overflow-hidden">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between bg-slate-50/70">
+                            <div class="flex items-center gap-3 text-[11px] font-bold text-slate-500">
+                                <span id="results-summary">Showing 0 of 0 Results</span>
+                                <span id="pagination-status" class="rounded-full bg-white px-3 py-1 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400">Page 1 of 1</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-3 lg:justify-end">
+                                <label for="page-size-select" class="text-[10px] font-black uppercase tracking-widest text-slate-400">Rows</label>
+                                <select id="page-size-select" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 outline-none">
+                                    <option value="10">10</option>
+                                    <option value="25" selected>25</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                    <option value="500">500</option>
+                                </select>
+                                <button id="pagination-prev" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                                <button id="pagination-next" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+                            </div>
+                        </div>
+                        <div class="table-container custom-scrollbar max-h-[800px]">
+                            <table class="w-full text-left border-separate border-spacing-0">
+                                <thead class="sticky top-0 z-20 bg-slate-100" id="table-head">
+                                    </thead>
+                                <tbody id="table-body" class="text-[11px] divide-y divide-slate-100">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <aside id="detail-panel" class="hidden w-full xl:w-[450px] bg-white rounded-2xl border border-slate-300 shadow-2xl flex flex-col h-[800px] sticky top-0 overflow-hidden shrink-0 animate-fade">
+                    <div class="p-5 border-b bg-slate-900 text-white flex justify-between items-center">
+                        <div>
+                            <h2 class="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-1">Asset Inspector</h2>
+                            <p id="panel-title" class="text-base font-black truncate max-w-[280px]">-</p>
+                        </div>
+                        <button onclick="App.closePanel()" class="hover:bg-white/10 w-10 h-10 rounded-xl text-2xl flex items-center justify-center transition-colors">&times;</button>
+                    </div>
+                    <div class="overflow-y-auto custom-scrollbar flex-grow bg-slate-50/50">
+                        <table class="w-full text-left border-collapse">
+                            <tbody id="panel-content" class="text-[11px] divide-y divide-slate-200/80">
+                                </tbody>
+                        </table>
+                    </div>
+                    <div class="p-4 bg-white border-t">
+                        <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest text-center">OCID meta data</p>
+                    </div>
+                </aside>
+            </main>
+        </div>
+    </div>
+
+    <div id="about-modal" class="hidden fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-[80vw] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade">
+            <div class="bg-slate-900 p-10 text-white flex justify-between items-start">
+                <div>
+                    <h2 class="text-3xl font-black uppercase tracking-tighter italic leading-none">About The OCI Tenancy Explorer</h2>
+                    <p class="text-blue-400 text-[11px] font-bold uppercase tracking-[0.3em] mt-3">Tenancy-Wide Visibility And Operational Signals</p>
+                </div>
+                <button onclick="App.toggleAbout(false)" class="text-4xl font-light hover:text-blue-400 transition-colors leading-none">&times;</button>
+            </div>
+            
+            <div class="p-12 overflow-y-auto custom-scrollbar text-sm text-slate-600 space-y-12 bg-white">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    <section>
+                        <h3 class="text-slate-900 font-black uppercase text-xs tracking-[0.2em] mb-6 flex items-center gap-4">
+                            <span class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xs font-black shadow-lg">01</span>
+                            What This App Does
+                        </h3>
+                        <p class="leading-relaxed mb-4">OCI Tenancy Explorer gives administrators and customers a clear view of compute instances across the tenancy, including maintenance reboot dates, reboot-related evidence, and recent status changes.</p>
+                        <ul class="space-y-3 text-[12px]">
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Fleet-wide view:</span>
+                                <span>The collector discovers OCI compute instances across all subscribed regions marked as ready in the tenancy.</span>
+                            </li>
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Reboot visibility:</span>
+                                <span>The dashboard shows whether an instance is scheduled, completed, or not scheduled for a reboot-related maintenance event.</span>
+                            </li>
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Change tracking:</span>
+                                <span>The app compares the latest snapshot with the previous one so operators can quickly spot transitions.</span>
+                            </li>
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Safe browser model:</span>
+                                <span>OCI credentials stay on the host running the collector and are never exposed to the browser. The page keeps fleet data in memory for the current tab session instead of storing it in persistent browser storage.</span>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h3 class="text-slate-900 font-black uppercase text-xs tracking-[0.2em] mb-6 flex items-center gap-4">
+                            <span class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xs font-black shadow-lg">02</span>
+                            How It Is Installed
+                        </h3>
+                        <p class="leading-relaxed mb-4">A customer can install this application with a very small footprint. The front end is a single HTML file, and the data collector is a Python script using the OCI SDK.</p>
+                        <ol class="space-y-3 text-[12px] list-decimal pl-5">
+                            <li>Install Python 3 and the OCI Python SDK.</li>
+                            <li>Create OCI authentication in <code>~/.oci/config</code> or use instance principals on OCI compute.</li>
+                            <li>Run <code>portal_server.py</code> on the same host that will build and serve <code>fleet_data.json</code>.</li>
+                            <li>Use the portal refresh flow or run <code>build_fleet_data.py</code> on that same host to generate <code>fleet_data.json</code>.</li>
+                            <li>Open the dashboard locally and refresh on demand from the UI.</li>
+                        </ol>
+                        <div class="mt-4 p-4 bg-[#fff7ec] rounded-2xl border border-[#f3dfb4]">
+                            <p class="text-[10px] font-black uppercase tracking-widest text-[#b7791f] mb-2">OCI Authentication Setup</p>
+                            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                <div class="rounded-2xl border border-[#f3dfb4] bg-white/70 p-4">
+                                    <p class="text-[10px] font-black uppercase tracking-widest text-[#b7791f]">Option 1: Local <code>~/.oci/config</code></p>
+                                    <ul class="mt-3 space-y-2 text-[12px]">
+                                        <li>Create <code>~/.oci/config</code> with <code>user</code>, <code>tenancy</code>, <code>fingerprint</code>, <code>region</code>, and <code>key_file</code>.</li>
+                                        <li>Place the private API key at the path referenced by <code>key_file</code>, for example <code>/Users/user_name/.oci/oci_api_key.pem</code>.</li>
+                                        <li>Upload the matching public key to the OCI user in the OCI Console under API Keys.</li>
+                                    </ul>
+                                    <div class="mt-3 flex flex-wrap gap-2">
+                                        <a href="./oci_config.example" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-[#fff7ec]">View Config Example</a>
+                                        <a href="https://docs.oracle.com/en-us/iaas/tools/python/latest/configuration.html" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-[#fff7ec]">Oracle SDK Config Docs</a>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-[#f3dfb4] bg-white/70 p-4">
+                                    <p class="text-[10px] font-black uppercase tracking-widest text-[#b7791f]">Option 2: OCI Compute Instance Principals</p>
+                                    <ul class="mt-3 space-y-2 text-[12px]">
+                                        <li>Run the portal on an OCI compute instance instead of a laptop.</li>
+                                        <li>Place that instance in a dynamic group and grant read-only OCI policies for the services this app needs.</li>
+                                        <li>Start the portal and collector with <code>--auth instance_principal</code>.</li>
+                                    </ul>
+                                    <div class="mt-3 flex flex-wrap gap-2">
+                                        <a href="https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/cmdref/setup/instance-principal.html" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-[#fff7ec]">Instance Principal Docs</a>
+                                        <a href="https://docs.oracle.com/iaas/Content/Identity/dynamicgroups/To_create_a_dynamic_group.htm" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-[#fff7ec]">Dynamic Group Setup</a>
+                                        <a href="https://docs.oracle.com/iaas/Content/Identity/callresources/Writing_Policies_for_Dynamic_Groups.htm" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-[#fff7ec]">Policy Examples</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Typical Launch Flow</p>
+                            <p class="text-[12px] leading-relaxed"><code>portal_server.py</code>, <code>build_fleet_data.py</code>, and the generated <code>fleet_data.json</code> should run on the same host for the built-in refresh flow. The browser reads the generated file from that host and renders the fleet view.</p>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    <section>
+                        <h3 class="text-slate-900 font-black uppercase text-xs tracking-[0.2em] mb-6 flex items-center gap-4">
+                            <span class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xs font-black shadow-lg">03</span>
+                            Live OCI Refresh Flow
+                        </h3>
+                        <p class="leading-relaxed mb-4">The dashboard supports a controlled one-click refresh model that is safe for customer environments and easy for operators to understand.</p>
+                        <ul class="space-y-3 text-[12px]">
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Refresh button:</span>
+                                <span>The user clicks <code>Refresh Data</code> inside the portal.</span>
+                            </li>
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Local endpoint:</span>
+                                <span><code>portal_server.py</code> starts the collector in the background and streams live log output to the modal.</span>
+                            </li>
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• JSON rebuild:</span>
+                                <span>The collector rewrites <code>fleet_data.json</code> with the newest tenancy snapshot.</span>
+                            </li>
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Browser sync:</span>
+                                <span>After <code>fleet_data.json</code> is updated on the host, the SPA reloads that refreshed snapshot into memory and updates the grid so added, removed, or changed rows are reflected on the next load.</span>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h3 class="text-slate-900 font-black uppercase text-xs tracking-[0.2em] mb-6 flex items-center gap-4">
+                            <span class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xs font-black shadow-lg">04</span>
+                            Status Meanings
+                        </h3>
+                        <p class="leading-relaxed mb-4">The app compares the latest OCI snapshot with the previous one to show the current reboot state in a way that is readable for both engineers and business users.</p>
+                        <div class="space-y-3">
+                            <div class="p-4 bg-amber-50 rounded-xl border border-amber-100 flex gap-4">
+                                <span class="px-2 py-0.5 bg-amber-500 text-white text-[9px] font-black rounded h-fit">SCHED</span>
+                                <p class="text-[11px]">A maintenance reboot date is currently present in OCI. The dashboard marks the instance as <b>Scheduled</b>.</p>
+                            </div>
+                            <div class="p-4 bg-green-50 rounded-xl border border-green-100 flex gap-4">
+                                <span class="px-2 py-0.5 bg-green-600 text-white text-[9px] font-black rounded h-fit">COMP</span>
+                                <p class="text-[11px]">The previous snapshot showed a maintenance reboot date, but the current snapshot no longer does. The dashboard marks the instance as <b>Completed</b>.</p>
+                            </div>
+                            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 flex gap-4">
+                                <span class="px-2 py-0.5 bg-slate-500 text-white text-[9px] font-black rounded h-fit">STBY</span>
+                                <p class="text-[11px]">No maintenance reboot signal is currently reported by OCI for the instance. The dashboard marks it as <b>Not Scheduled</b>.</p>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    <section>
+                        <h3 class="text-slate-900 font-black uppercase text-xs tracking-[0.2em] mb-6 flex items-center gap-4">
+                            <span class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xs font-black shadow-lg">05</span>
+                            Change Signals
+                        </h3>
+                        <p class="leading-relaxed mb-4">The dashboard highlights what changed since the previous collector run so a reboot-related transition is easy to see immediately.</p>
+                        <ul class="space-y-3 text-[12px]">
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Signal column:</span>
+                                <span>Shows <i>Stable</i> or a transition such as <i>Not Scheduled → Scheduled</i>.</span>
+                            </li>
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Changed stat:</span>
+                                <span>Counts how many rows changed in the current filtered view.</span>
+                            </li>
+                            <li class="grid grid-cols-1 xl:grid-cols-[190px_minmax(0,1fr)] gap-1 xl:gap-4 items-start">
+                                <span class="font-black text-slate-700 whitespace-nowrap">• Customer card highlight:</span>
+                                <span>Fleet cards glow blue when any instance in that customer changed.</span>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h3 class="text-slate-900 font-black uppercase text-xs tracking-[0.2em] mb-6 flex items-center gap-4">
+                            <span class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xs font-black shadow-lg">06</span>
+                            OCI Data Sources
+                        </h3>
+                        <p class="leading-relaxed mb-4">The maintenance and reboot fields shown in the grid are based on direct OCI API data and snapshot comparison logic.</p>
+                        <div class="space-y-3 text-[12px]">
+                            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                <p class="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2">Identity Service</p>
+                                <p>Used to list accessible compartments and subscribed regions. This is how the collector knows which compartments and regions to scan.</p>
+                            </div>
+                            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                <p class="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2">Compute Service</p>
+                                <p>The collector calls OCI Compute to list instances and active instance maintenance events per compartment and region. When an <code>InstanceMaintenanceEvent</code> exists, it becomes the primary source for <code>Maintenance_UTC</code>, <code>Maintenance_Action</code>, and <code>Maintenance_Event_Status</code>, with instance metadata kept as a fallback.</p>
+                            </div>
+                            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                <p class="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2">OS Management Hub</p>
+                                <p>When available, the collector reads managed instance boot data to populate <code>Last_Reboot_UTC</code> and set <code>Reboot_Evidence</code> to show that the reboot timestamp came from OS Management Hub.</p>
+                            </div>
+                            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                <p class="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2">Availability Configuration</p>
+                                <p>The collector also reads each instance availability configuration so the grid can show <code>Live_Migration_Preference</code>. That helps distinguish reboot-required maintenance from maintenance that OCI may handle with live migration or no customer action.</p>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <section class="pt-8 border-t border-slate-100">
+                    <h3 class="text-slate-900 font-black uppercase text-xs tracking-[0.2em] mb-6">How Maintenance Dates Are Determined</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-[#fff7ec] p-6 rounded-2xl border border-[#f3dfb4]">
+                            <p class="font-black text-[10px] uppercase text-[#b7791f] mb-2">Step 1</p>
+                            <p class="text-[11px] leading-relaxed">The collector lists compute instances and then checks OCI <code>InstanceMaintenanceEvent</code> records for those same compartments and regions.</p>
+                        </div>
+                        <div class="bg-[#eef8ff] p-6 rounded-2xl border border-[#cfe7fb]">
+                            <p class="font-black text-[10px] uppercase text-[#2167a7] mb-2">Step 2</p>
+                            <p class="text-[11px] leading-relaxed">If an active maintenance event exists, the collector uses the event timing and action as the primary maintenance source. If no event is present, it falls back to the instance field <code>time_maintenance_reboot_due</code>.</p>
+                        </div>
+                        <div class="bg-[#f2fbf4] p-6 rounded-2xl border border-[#d7eedc]">
+                            <p class="font-black text-[10px] uppercase text-[#2f855a] mb-2">Step 3</p>
+                            <p class="text-[11px] leading-relaxed">If the maintenance source, action, or schedule changes between refreshes, the dashboard raises a change signal. If a reboot schedule disappears later, the app marks the instance as <b>Completed</b>.</p>
+                        </div>
+                    </div>
+                    <h3 class="text-slate-900 font-black uppercase text-xs tracking-[0.2em] mb-6">Timezones And Evidence</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div class="bg-slate-50 p-6 rounded-2xl">
+                            <p class="font-black text-[10px] uppercase text-slate-400 mb-2">UTC (Universal)</p>
+                            <p class="text-[11px]">Primary timestamp reference returned by OCI and used for change tracking.</p>
+                        </div>
+                        <div class="bg-slate-50 p-6 rounded-2xl">
+                            <p class="font-black text-[10px] uppercase text-blue-600 mb-2">IST (India)</p>
+                            <p class="text-[11px]">Automated offset: <span class="font-mono">+5:30</span>.</p>
+                        </div>
+                        <div class="bg-slate-50 p-6 rounded-2xl">
+                            <p class="font-black text-[10px] uppercase text-emerald-600 mb-2">EDT (Eastern)</p>
+                            <p class="text-[11px]">Automated offset: <span class="font-mono">-4:00</span>.</p>
+                        </div>
+                        <div class="bg-slate-50 p-6 rounded-2xl">
+                            <p class="font-black text-[10px] uppercase text-slate-700 mb-2">Reboot Evidence</p>
+                            <p class="text-[11px]">Shows whether the displayed reboot context came from OCI maintenance data, OS Management Hub boot data, or prior snapshot comparison logic.</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div class="p-8 bg-slate-50 border-t flex justify-end">
+                <button onclick="App.toggleAbout(false)" class="bg-slate-900 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all">Understood</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="refresh-modal" class="hidden fixed inset-0 z-[110] modal-overlay flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-[90vw] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-fade">
+            <div class="bg-slate-900 p-8 text-white flex justify-between items-start">
+                <div>
+                    <h2 class="text-3xl font-black uppercase tracking-tighter leading-none">OCI Refresh Console</h2>
+                    <p class="text-blue-400 text-[11px] font-bold uppercase tracking-[0.3em] mt-3">Live Fleet Collection Log</p>
+                </div>
+                <button id="refresh-modal-close" class="text-4xl font-light hover:text-blue-400 transition-colors leading-none">&times;</button>
+            </div>
+            <div class="p-6 bg-[#fffdfa] border-b border-[#e7dfdb] flex items-center justify-between gap-4">
+                <div>
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Refresh Status</p>
+                    <p id="refresh-modal-summary" class="text-sm font-bold text-slate-700 mt-1">Ready to refresh OCI fleet data.</p>
+                    <p id="refresh-modal-runtime" class="hidden text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest"></p>
+                </div>
+                <div id="refresh-modal-state" class="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest refresh-status-running">Idle</div>
+            </div>
+            <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 bg-white space-y-4">
+                <div class="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-4">
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Overall Progress</p>
+                                <p id="refresh-progress-summary" class="mt-2 text-sm font-bold text-slate-700">Waiting to discover tenancy regions.</p>
+                            </div>
+                            <div id="refresh-progress-percent" class="text-xl font-black text-slate-400">0%</div>
+                        </div>
+                        <div class="mt-4 h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                            <div id="refresh-progress-bar" class="h-full w-0 rounded-full bg-[#c74634] transition-all duration-300"></div>
+                        </div>
+                        <p id="refresh-progress-detail" class="mt-3 text-[11px] text-slate-500">Region progress will appear once the collector starts scanning OCI.</p>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Region Activity</p>
+                        <div id="refresh-region-grid" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] text-slate-500">No region activity yet.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Per-Region Logs</p>
+                        <p class="text-[11px] text-slate-500">Each region gets its own live log stream while the refresh runs.</p>
+                    </div>
+                    <div id="refresh-region-logs" class="mt-4 space-y-3">
+                        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] text-slate-500">Region-specific logs will appear here during refresh.</div>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Combined Collector Log</p>
+                        <span id="refresh-modal-activity" class="hidden refresh-spinner" aria-live="polite">|</span>
+                    </div>
+                    <p id="refresh-modal-hint" class="text-[11px] text-slate-500">Start the local portal server to enable one-click refresh.</p>
+                </div>
+                <pre id="refresh-log-output" class="refresh-log rounded-2xl p-5 overflow-auto h-[300px] whitespace-pre-wrap">No refresh has been started.</pre>
+            </div>
+            <div class="p-6 bg-slate-50 border-t flex justify-between items-center gap-3">
+                <div class="text-[11px] text-slate-500">
+                    <code id="refresh-command-hint">python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json</code>
+                </div>
+                <div class="flex gap-2">
+                    <button id="refresh-modal-copy-log" class="bg-white border border-[#e7dfdb] text-slate-600 px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Copy Log</button>
+                    <button id="refresh-modal-run" class="bg-[#c74634] text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#9f3022] transition-all">Run Refresh</button>
+                    <button id="refresh-modal-dismiss" class="bg-white border border-[#e7dfdb] text-slate-600 px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="config-setup-modal" class="hidden fixed inset-0 z-[105] modal-overlay flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade">
+            <div class="bg-slate-900 p-8 text-white flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-black uppercase tracking-tighter leading-none">Local OCI Config Setup</h2>
+                    <p class="text-blue-400 text-[11px] font-bold uppercase tracking-[0.3em] mt-3">Use ~/.oci/config With An API Key</p>
+                </div>
+                <button onclick="App.toggleSetupModal('config', false)" class="text-4xl font-light hover:text-blue-400 transition-colors leading-none">&times;</button>
+            </div>
+            <div class="p-8 overflow-y-auto custom-scrollbar space-y-6 bg-white text-slate-600">
+                <p class="text-sm leading-relaxed">Use this path when you are running the portal from a laptop, admin workstation, or another local host.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div class="flex items-start gap-3">
+                            <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">1</span>
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Create The OCI Folder</p>
+                                <p class="mt-2 text-[12px] leading-relaxed">Run <code>mkdir -p ~/.oci</code> and <code>chmod 700 ~/.oci</code> on the same host that will run <code>portal_server.py</code>.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div class="flex items-start gap-3">
+                            <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">2</span>
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Generate Or Place The API Key</p>
+                                <p class="mt-2 text-[12px] leading-relaxed">Generate an OCI signing key pair locally, or place the approved private key file on disk, for example <code>~/.oci/oci_api_key.pem</code>.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div class="flex items-start gap-3">
+                            <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">3</span>
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Upload The Public Key</p>
+                                <p class="mt-2 text-[12px] leading-relaxed">Upload the matching public key in the OCI Console under your user profile and copy the fingerprint OCI returns.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div class="flex items-start gap-3">
+                            <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">4</span>
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Create ~/.oci/config</p>
+                                <p class="mt-2 text-[12px] leading-relaxed">Populate <code>user</code>, <code>tenancy</code>, <code>fingerprint</code>, <code>region</code>, and <code>key_file</code>, then run <code>chmod 600 ~/.oci/config</code>.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-2xl border border-[#efc6be] bg-[#fff7ec] p-5">
+                    <p class="text-[10px] font-black uppercase tracking-widest text-[#b7791f]">Helpful Links</p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <a href="./oci_config.example" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-white">View Config Example</a>
+                        <a href="https://docs.oracle.com/en-us/iaas/tools/python/latest/configuration.html" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-white">Oracle SDK Config Docs</a>
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 bg-slate-50 border-t flex justify-end">
+                <button onclick="App.toggleSetupModal('config', false)" class="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="principal-setup-modal" class="hidden fixed inset-0 z-[105] modal-overlay flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade">
+            <div class="bg-slate-900 p-8 text-white flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-black uppercase tracking-tighter leading-none">Instance Principal Setup</h2>
+                    <p class="text-blue-400 text-[11px] font-bold uppercase tracking-[0.3em] mt-3">Run On OCI Compute Without A Local API Key</p>
+                </div>
+                <button onclick="App.toggleSetupModal('principal', false)" class="text-4xl font-light hover:text-blue-400 transition-colors leading-none">&times;</button>
+            </div>
+            <div class="p-8 overflow-y-auto custom-scrollbar space-y-6 bg-white text-slate-600">
+                <p class="text-sm leading-relaxed">Use this path when the portal and collector run on an OCI compute instance and you want the host itself to authenticate to OCI.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div class="flex items-start gap-3">
+                            <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">1</span>
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Run On OCI Compute</p>
+                                <p class="mt-2 text-[12px] leading-relaxed">Deploy the portal on an OCI compute instance. This same host should also run <code>build_fleet_data.py</code> and serve <code>fleet_data.json</code>.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div class="flex items-start gap-3">
+                            <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">2</span>
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Create A Dynamic Group</p>
+                                <p class="mt-2 text-[12px] leading-relaxed">Place the compute instance in a dynamic group so OCI can recognize it as an authorized principal.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div class="flex items-start gap-3">
+                            <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">3</span>
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Grant Read Policies</p>
+                                <p class="mt-2 text-[12px] leading-relaxed">Create IAM policies that let the dynamic group inspect compartments and read the OCI services this app queries.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div class="flex items-start gap-3">
+                            <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">4</span>
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Start With Instance Principal Auth</p>
+                                <p class="mt-2 text-[12px] leading-relaxed">Launch the app using <code>python3 portal_server.py --auth instance_principal</code>. The refresh modal will then run the collector with the same auth method.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-2xl border border-[#efc6be] bg-[#fff7ec] p-5">
+                    <p class="text-[10px] font-black uppercase tracking-widest text-[#b7791f]">Helpful Links</p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <a href="https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/cmdref/setup/instance-principal.html" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-white">Instance Principal Docs</a>
+                        <a href="https://docs.oracle.com/iaas/Content/Identity/dynamicgroups/To_create_a_dynamic_group.htm" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-white">Dynamic Group Setup</a>
+                        <a href="https://docs.oracle.com/iaas/Content/Identity/callresources/Writing_Policies_for_Dynamic_Groups.htm" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl border border-[#efc6be] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#c74634] hover:bg-white">Policy Examples</a>
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 bg-slate-50 border-t flex justify-end">
+                <button onclick="App.toggleSetupModal('principal', false)" class="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const LEGACY_DB_NAME = 'OCI_TENANCY_EXPLORER_ENTERPRISE_DB';
+        const REFRESH_STATUS_POLL_MS = 1200;
+
+        const App = {
+            currentCustomer: null, currentCustomerLabel: null, customers: [], allInstances: [], data: [], headers: [], filtered: [],
+            refreshPollHandle: null,
+            refreshSpinnerHandle: null,
+            refreshLastLogCount: 0,
+            refreshSpinnerFrameIndex: 0,
+            jsonGeneratedAt: '',
+            pagination: { page: 1, pageSize: 25 },
+            coreKeys: ["ID", "Display_Name", "Status_Change_Signal", "reboot_status", "Maintenance_Action", "Maintenance_Event_Status", "Live_Migration_Preference", "Compartment_Name", "Region", "Fault_Domain", "Availability_Domain", "Previous_Status", "Status_Changed_UTC", "Last_Reboot_UTC", "Last_Reboot_IST", "Last_Reboot_EDT", "Reboot_Evidence", "Maintenance_UTC", "Maintenance_IST", "Maintenance_EDT", "Maintenance_Source"],
+            headerMap: {
+                "ID": "OCID", "Display_Name": "Display Name", "reboot_status": "Status",
+                "Maintenance_Action": "Maintenance Action", "Maintenance_Event_Status": "Maintenance Event Status", "Live_Migration_Preference": "Live Migration Preference",
+                "Status_Change_Signal": "Signal", "Previous_Status": "Previous Status", "Status_Changed_UTC": "Changed At (UTC)",
+                "Last_Reboot_UTC": "Last Reboot (UTC)", "Last_Reboot_IST": "Last Reboot (IST)", "Last_Reboot_EDT": "Last Reboot (EDT)", "Reboot_Evidence": "Reboot Evidence",
+                "Maintenance_UTC": "Date (UTC)", "Maintenance_IST": "Date (IST)", "Maintenance_EDT": "Date (EDT)", "Maintenance_Source": "Maintenance Source",
+                "Compartment_Name": "Compartment", "Region": "Region", "Fault_Domain": "Fault Domain", "Availability_Domain": "Availability Domain"
+            },
+            filters: { search: '', reboot_status: 'all', Status_Change_Signal: 'all', Compartment_Name: 'all', Region: 'all', Availability_Domain: 'all', Fault_Domain: 'all', Shape: 'all' },
+            sort: { column: null, direction: 'none' },
+
+            async init() {
+                this.clearLegacyBrowserCache();
+                // EVENT BINDING
+                document.getElementById('back-to-home').onclick = () => this.exitToDashboard();
+                document.getElementById('search-input').oninput = (e) => { this.filters.search = e.target.value; this.pagination.page = 1; this.render(); };
+                document.getElementById('export-filtered-btn').onclick = () => this.exportCSV();
+                document.getElementById('page-size-select').onchange = (e) => {
+                    this.pagination.pageSize = Number(e.target.value) || 25;
+                    this.pagination.page = 1;
+                    this.render();
+                };
+                document.getElementById('pagination-prev').onclick = () => this.changePage(-1);
+                document.getElementById('pagination-next').onclick = () => this.changePage(1);
+                document.getElementById('header-refresh-action').onclick = () => this.openRefreshConsole();
+                document.getElementById('refresh-modal-close').onclick = () => this.toggleRefreshModal(false);
+                document.getElementById('refresh-modal-dismiss').onclick = () => this.toggleRefreshModal(false);
+                document.getElementById('refresh-modal-copy-log').onclick = (e) => this.copyRefreshLog(e);
+                document.getElementById('refresh-modal-run').onclick = () => this.startServerRefresh();
+                document.getElementById('clear-filters-btn').onclick = () => {
+                    this.filters = { search: '', reboot_status: 'all', Status_Change_Signal: 'all', Compartment_Name: 'all', Region: 'all', Availability_Domain: 'all', Fault_Domain: 'all', Shape: 'all' };
+                    this.pagination.page = 1;
+                    document.getElementById('search-input').value = '';
+                    this.render();
+                };
+                ['reboot_status', 'Status_Change_Signal', 'Compartment_Name', 'Region', 'Availability_Domain', 'Fault_Domain', 'Shape'].forEach(f => {
+                    const el = document.getElementById(`filter-${f}`);
+                    if(el) el.onchange = (e) => { this.filters[f] = e.target.value; this.pagination.page = 1; this.render(); };
+                });
+                this.renderRefreshStatus({
+                    running: false,
+                    logs: [],
+                    lastExitCode: null
+                });
+                this.loadCustomers();
+                this.checkExternalJSON();
+            },
+
+            clearLegacyBrowserCache() {
+                if (!('indexedDB' in window)) return;
+                try {
+                    window.indexedDB.deleteDatabase(LEGACY_DB_NAME);
+                } catch (e) {
+                    console.log('Legacy browser cache cleanup skipped.', e);
+                }
+            },
+
+            async checkExternalJSON() {
+                try {
+                    const res = await fetch('./fleet_data.json', { cache: 'no-store' });
+                    if (!res.ok) return;
+                    const json = await res.json();
+                    if (json.customers && json.instances) {
+                        this.customers = json.customers || [];
+                        this.allInstances = json.instances || [];
+                        this.jsonGeneratedAt = json.generatedAt || '';
+                        document.getElementById('sync-indicator').classList.remove('hidden');
+                        document.getElementById('json-source-link').classList.remove('hidden');
+                        const generatedEl = document.getElementById('json-generated-at');
+                        if (generatedEl && this.jsonGeneratedAt) {
+                            generatedEl.textContent = `Generated ${this.formatUtcDisplay(this.jsonGeneratedAt, false)} UTC`;
+                            generatedEl.classList.remove('hidden');
+                        }
+                        this.loadCustomers();
+                    }
+                } catch(e) { console.log("Hybrid Sync: Static JSON source not found."); }
+            },
+
+            formatUtcDisplay(date, includeSeconds = true) {
+                const d = date instanceof Date ? date : new Date(date);
+                if (isNaN(d.getTime())) return '';
+                return d.toISOString().replace('T', ' ').substring(0, includeSeconds ? 19 : 16);
+            },
+
+            escapeHtml(value) {
+                return String(value)
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('"', '&quot;')
+                    .replaceAll("'", '&#39;');
+            },
+
+            classifyRefreshLogLine(line) {
+                const text = String(line).toLowerCase();
+                if (
+                    text.includes('traceback') ||
+                    text.includes('refresh failed') ||
+                    text.includes('attributeerror') ||
+                    text.includes('error:') ||
+                    text.includes('failed in ') ||
+                    text.includes('lookup failed')
+                ) {
+                    return 'refresh-log-error';
+                }
+                if (
+                    text.includes('exceeded') ||
+                    text.includes('timeout') ||
+                    text.includes('timed out') ||
+                    text.includes('skipping')
+                ) {
+                    return 'refresh-log-warning';
+                }
+                return '';
+            },
+
+            async openRefreshConsole() {
+                this.toggleRefreshModal(true);
+                if (!window.location.protocol.startsWith('http')) {
+                    this.renderRefreshStatus({
+                        running: false,
+                        logs: [
+                            'One-click refresh requires the local portal server.',
+                            'Start it with:',
+                            'python3 portal_server.py --profile DEFAULT',
+                            '',
+                            'Then open http://127.0.0.1:8765/index.html'
+                        ],
+                        lastExitCode: 1
+                    });
+                    return;
+                }
+
+                await this.fetchRefreshStatus();
+                const stateEl = document.getElementById('refresh-modal-state');
+                if (stateEl && stateEl.textContent !== 'Running') {
+                    await this.startServerRefresh();
+                }
+            },
+
+            toggleRefreshModal(show) {
+                document.getElementById('refresh-modal').classList.toggle('hidden', !show);
+                if (show) {
+                    this.fetchRefreshStatus();
+                }
+            },
+
+            async startServerRefresh() {
+                if (!window.location.protocol.startsWith('http')) {
+                    this.renderRefreshStatus({
+                        running: false,
+                        logs: [
+                            'One-click refresh requires the local portal server.',
+                            'Start it with:',
+                            'python3 portal_server.py --profile DEFAULT',
+                            '',
+                            'Then open http://127.0.0.1:8765/index.html'
+                        ],
+                        lastExitCode: 1
+                    });
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/refresh', { method: 'POST' });
+                    const payload = await res.json();
+                    this.renderRefreshStatus(payload);
+                    this.beginRefreshPolling();
+                } catch (e) {
+                    this.renderRefreshStatus({
+                        running: false,
+                        logs: [
+                            'Unable to reach the local refresh endpoint.',
+                            'Start the portal server with:',
+                            'python3 portal_server.py --profile DEFAULT',
+                            '',
+                            `Error: ${e}`
+                        ],
+                        lastExitCode: 1
+                    });
+                }
+            },
+
+            beginRefreshPolling() {
+                this.stopRefreshPolling();
+                this.refreshPollHandle = window.setInterval(() => this.fetchRefreshStatus(), REFRESH_STATUS_POLL_MS);
+            },
+
+            stopRefreshPolling() {
+                if (this.refreshPollHandle) {
+                    window.clearInterval(this.refreshPollHandle);
+                    this.refreshPollHandle = null;
+                }
+            },
+
+            setRefreshActivity(isRunning, startedAt) {
+                const activityEl = document.getElementById('refresh-modal-activity');
+                const runtimeEl = document.getElementById('refresh-modal-runtime');
+                if (!activityEl || !runtimeEl) return;
+
+                if (isRunning) {
+                    activityEl.classList.remove('hidden');
+                    runtimeEl.classList.remove('hidden');
+                    if (!this.refreshSpinnerHandle) {
+                        const frames = ['|', '/', '-', '\\'];
+                        activityEl.textContent = frames[this.refreshSpinnerFrameIndex % frames.length];
+                        this.refreshSpinnerHandle = window.setInterval(() => {
+                            this.refreshSpinnerFrameIndex = (this.refreshSpinnerFrameIndex + 1) % frames.length;
+                            activityEl.textContent = frames[this.refreshSpinnerFrameIndex];
+                            if (startedAt) {
+                                const started = new Date(startedAt);
+                                if (!Number.isNaN(started.getTime())) {
+                                    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - started.getTime()) / 1000));
+                                    runtimeEl.textContent = `Running for ${elapsedSeconds}s`;
+                                }
+                            }
+                        }, 180);
+                    }
+                    if (startedAt) {
+                        const started = new Date(startedAt);
+                        if (!Number.isNaN(started.getTime())) {
+                            const elapsedSeconds = Math.max(0, Math.floor((Date.now() - started.getTime()) / 1000));
+                            runtimeEl.textContent = `Running for ${elapsedSeconds}s`;
+                        }
+                    } else {
+                        runtimeEl.textContent = 'Running';
+                    }
+                    return;
+                }
+
+                activityEl.classList.add('hidden');
+                runtimeEl.classList.add('hidden');
+                activityEl.textContent = '|';
+                runtimeEl.textContent = '';
+                if (this.refreshSpinnerHandle) {
+                    window.clearInterval(this.refreshSpinnerHandle);
+                    this.refreshSpinnerHandle = null;
+                }
+            },
+
+            extractRefreshEvent(line) {
+                const prefix = '__OTX_EVENT__ ';
+                if (!String(line).startsWith(prefix)) return null;
+                try {
+                    return JSON.parse(String(line).slice(prefix.length));
+                } catch (e) {
+                    return null;
+                }
+            },
+
+            normalizeRefreshPayload(payload) {
+                const rawLogs = Array.isArray(payload.logs) ? payload.logs : [];
+                const visibleLogs = [];
+                const regionMap = new Map();
+                const ensureRegion = (name) => {
+                    if (!regionMap.has(name)) {
+                        regionMap.set(name, {
+                            name,
+                            status: 'queued',
+                            phase: 'Queued',
+                            logs: [],
+                            startedAt: null,
+                            finishedAt: null,
+                            instanceCount: 0,
+                            warningCount: 0,
+                        });
+                    }
+                    return regionMap.get(name);
+                };
+
+                (payload.regions || []).forEach(region => {
+                    if (!region?.name) return;
+                    regionMap.set(region.name, {
+                        name: region.name,
+                        status: region.status || 'queued',
+                        phase: region.phase || 'Queued',
+                        logs: Array.isArray(region.logs) ? [...region.logs] : [],
+                        startedAt: region.startedAt || null,
+                        finishedAt: region.finishedAt || null,
+                        instanceCount: Number(region.instanceCount || 0),
+                        warningCount: Number(region.warningCount || 0),
+                    });
+                });
+
+                let discoveredRegions = payload.totalRegions || 0;
+
+                rawLogs.forEach(line => {
+                    const event = this.extractRefreshEvent(line);
+                    if (!event) {
+                        visibleLogs.push(line);
+                        for (const [name, region] of regionMap.entries()) {
+                            if (String(line).includes(name)) {
+                                region.logs.push(line);
+                                if (/(failed|timeout|timed out|exceeded|skipping|error)/i.test(String(line))) {
+                                    region.warningCount += 1;
+                                }
+                                break;
+                            }
+                        }
+                        return;
+                    }
+
+                    if (event.type === 'regions_discovered' && Array.isArray(event.regions)) {
+                        discoveredRegions = event.regions.length;
+                        event.regions.forEach(name => ensureRegion(name));
+                        return;
+                    }
+
+                    if (!event.region) return;
+                    const region = ensureRegion(event.region);
+
+                    if (event.type === 'region_started') {
+                        region.status = 'running';
+                        region.phase = event.phase || 'Starting';
+                        region.startedAt = event.startedAt || region.startedAt;
+                        return;
+                    }
+
+                    if (event.type === 'region_phase') {
+                        region.status = event.status || 'running';
+                        region.phase = event.phase || region.phase;
+                        return;
+                    }
+
+                    if (event.type === 'region_completed') {
+                        region.status = 'completed';
+                        region.phase = 'Completed';
+                        region.finishedAt = event.finishedAt || region.finishedAt;
+                        region.instanceCount = Number(event.instanceCount || region.instanceCount || 0);
+                        return;
+                    }
+
+                    if (event.type === 'region_failed') {
+                        region.status = 'failed';
+                        region.phase = event.phase || 'Failed';
+                        region.finishedAt = event.finishedAt || region.finishedAt;
+                    }
+                });
+
+                const regions = Array.from(regionMap.values());
+                const completedRegions = regions.filter(region => region.status === 'completed').length;
+                const failedRegions = regions.filter(region => region.status === 'failed').length;
+                const runningRegions = regions.filter(region => region.status === 'running').length;
+                const totalRegions = discoveredRegions || regions.length;
+
+                return {
+                    ...payload,
+                    logs: visibleLogs.length ? visibleLogs : ['No refresh has been started.'],
+                    regions,
+                    totalRegions,
+                    completedRegions,
+                    failedRegions,
+                    finishedRegions: completedRegions + failedRegions,
+                    runningRegions,
+                };
+            },
+
+            renderRefreshProgress(payload) {
+                const progressSummaryEl = document.getElementById('refresh-progress-summary');
+                const progressDetailEl = document.getElementById('refresh-progress-detail');
+                const progressPercentEl = document.getElementById('refresh-progress-percent');
+                const progressBarEl = document.getElementById('refresh-progress-bar');
+                const regionGridEl = document.getElementById('refresh-region-grid');
+                const regionLogsEl = document.getElementById('refresh-region-logs');
+                if (!progressSummaryEl || !progressDetailEl || !progressPercentEl || !progressBarEl || !regionGridEl || !regionLogsEl) return;
+
+                const regions = payload.regions || [];
+                const totalRegions = payload.totalRegions || regions.length || 0;
+                const completedRegions = payload.completedRegions || 0;
+                const finishedRegions = payload.finishedRegions || (completedRegions + (payload.failedRegions || 0));
+                const failedRegions = payload.failedRegions || 0;
+                const runningRegions = payload.runningRegions || 0;
+                const percent = totalRegions > 0 ? Math.round((finishedRegions / totalRegions) * 100) : 0;
+
+                progressPercentEl.textContent = `${percent}%`;
+                progressBarEl.style.width = `${percent}%`;
+
+                if (!totalRegions) {
+                    progressSummaryEl.textContent = 'Waiting to discover tenancy regions.';
+                    progressDetailEl.textContent = 'Region progress will appear once the collector starts scanning OCI.';
+                    regionGridEl.innerHTML = '<div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] text-slate-500">No region activity yet.</div>';
+                    regionLogsEl.innerHTML = '<div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] text-slate-500">Region-specific logs will appear here during refresh.</div>';
+                    return;
+                }
+
+                progressSummaryEl.textContent = `Found ${this.formatCount(totalRegions)} subscribed region${totalRegions === 1 ? '' : 's'} in the tenancy.`;
+                progressDetailEl.textContent = `Processed ${this.formatCount(finishedRegions)} of ${this.formatCount(totalRegions)} region${totalRegions === 1 ? '' : 's'}${runningRegions ? `, with ${this.formatCount(runningRegions)} still running` : ''}${failedRegions ? ` and ${this.formatCount(failedRegions)} failed` : ''}.`;
+
+                const statusClasses = {
+                    queued: 'bg-slate-100 text-slate-500 border-slate-200',
+                    running: 'bg-amber-50 text-amber-700 border-amber-200',
+                    completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    failed: 'bg-rose-50 text-rose-700 border-rose-200',
+                };
+
+                regionGridEl.innerHTML = regions.map(region => {
+                    const status = region.status || 'queued';
+                    const phase = region.phase || 'Queued';
+                    const statusClass = statusClasses[status] || statusClasses.queued;
+                    return `
+                        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <p class="text-[11px] font-black text-slate-800 break-words">${this.escapeHtml(region.name || '-')}</p>
+                                    <p class="mt-1 text-[10px] uppercase tracking-widest text-slate-400">${this.escapeHtml(phase)}</p>
+                                </div>
+                                <span class="shrink-0 rounded-full border px-3 py-1 text-[9px] font-black uppercase tracking-widest ${statusClass}">${this.escapeHtml(status)}</span>
+                            </div>
+                            <div class="mt-3 flex items-center justify-between text-[10px] text-slate-500">
+                                <span>Instances: ${this.formatCount(region.instanceCount || 0)}</span>
+                                <span>Warnings: ${this.formatCount(region.warningCount || 0)}</span>
+                            </div>
+                        </div>`;
+                }).join('');
+
+                regionLogsEl.innerHTML = regions.map(region => {
+                    const logs = region.logs?.length ? region.logs : ['No region-specific log lines yet.'];
+                    const preLines = logs.map(line => {
+                        const className = this.classifyRefreshLogLine(line);
+                        return `<span class="refresh-log-line ${className}">${this.escapeHtml(line)}</span>`;
+                    }).join('');
+                    return `
+                        <details class="rounded-2xl border border-slate-200 bg-white overflow-hidden" ${region.status === 'running' ? 'open' : ''}>
+                            <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                                <div class="min-w-0">
+                                    <p class="text-[11px] font-black text-slate-800">${this.escapeHtml(region.name || '-')}</p>
+                                    <p class="mt-1 text-[10px] uppercase tracking-widest text-slate-400">${this.escapeHtml(region.phase || region.status || 'Queued')}</p>
+                                </div>
+                                <span class="text-[10px] text-slate-400">${this.formatCount(logs.length)} log line${logs.length === 1 ? '' : 's'}</span>
+                            </summary>
+                            <div class="border-t border-slate-200 p-4 bg-[#1b1715]">
+                                <pre class="refresh-log max-h-56 overflow-auto whitespace-pre-wrap">${preLines}</pre>
+                            </div>
+                        </details>`;
+                }).join('');
+            },
+
+            async fetchRefreshStatus() {
+                if (!window.location.protocol.startsWith('http')) return;
+                try {
+                    const res = await fetch('/api/refresh/status', { cache: 'no-store' });
+                    if (!res.ok) return;
+                    const payload = await res.json();
+                    this.renderRefreshStatus(payload);
+                    if (payload.running) {
+                        this.beginRefreshPolling();
+                    } else {
+                        this.stopRefreshPolling();
+                        if (payload.lastExitCode === 0) {
+                            await this.checkExternalJSON();
+                            if (this.currentCustomer) this.loadCustomerData();
+                        }
+                    }
+                } catch (e) {
+                    this.stopRefreshPolling();
+                }
+            },
+
+            renderRefreshStatus(payload) {
+                payload = this.normalizeRefreshPayload(payload);
+                const stateEl = document.getElementById('refresh-modal-state');
+                const summaryEl = document.getElementById('refresh-modal-summary');
+                const logEl = document.getElementById('refresh-log-output');
+                const hintEl = document.getElementById('refresh-modal-hint');
+                const runBtn = document.getElementById('refresh-modal-run');
+                const logs = payload.logs?.length ? payload.logs : ['No refresh has been started.'];
+                const sawTimeout = logs.some(line => String(line).includes('exceeded') && String(line).includes('s'));
+
+                stateEl.className = 'px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest';
+                if (payload.running) {
+                    stateEl.classList.add('refresh-status-running');
+                    stateEl.textContent = 'Running';
+                    summaryEl.textContent = 'Refreshing OCI fleet data and rebuilding fleet_data.json...';
+                    hintEl.textContent = 'The log updates as the collector works through regions and writes the new snapshot.';
+                    runBtn.disabled = true;
+                    runBtn.textContent = 'Refresh Running';
+                    runBtn.classList.add('opacity-60', 'cursor-not-allowed');
+                } else if (payload.lastExitCode === 0) {
+                    stateEl.classList.add('refresh-status-success');
+                    stateEl.textContent = 'Success';
+                    summaryEl.textContent = `OCI refresh completed successfully${payload.finishedAt ? ` at ${payload.finishedAt}` : ''}.`;
+                    hintEl.textContent = 'The dashboard will reload the refreshed fleet_data.json automatically.';
+                    runBtn.disabled = false;
+                    runBtn.textContent = 'Run Refresh';
+                    runBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+                } else if (payload.lastExitCode && payload.lastExitCode !== 0) {
+                    stateEl.classList.add('refresh-status-error');
+                    stateEl.textContent = 'Error';
+                    if (sawTimeout) {
+                        summaryEl.textContent = 'The OCI refresh hit one or more API timeouts before it could finish.';
+                        hintEl.textContent = 'If timeouts continue, confirm VPN or network routing is not slowing OCI API calls, then retry the refresh.';
+                    } else {
+                        summaryEl.textContent = 'The OCI refresh failed. Review the log below for details.';
+                        hintEl.textContent = 'You can fix the issue and run refresh again. If the host is on VPN, disconnect and retry if OCI API calls seem slow.';
+                    }
+                    runBtn.disabled = false;
+                    runBtn.textContent = 'Retry Refresh';
+                    runBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+                } else {
+                    stateEl.classList.add('refresh-status-running');
+                    stateEl.textContent = 'Idle';
+                    summaryEl.textContent = 'Ready to refresh OCI fleet data.';
+                    hintEl.textContent = 'Use the button below to trigger the collector through the local portal server.';
+                    runBtn.disabled = false;
+                    runBtn.textContent = 'Run Refresh';
+                    runBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+                }
+
+                this.setRefreshActivity(Boolean(payload.running), payload.startedAt);
+                this.renderRefreshProgress(payload);
+
+                logEl.innerHTML = logs.map(line => {
+                    const className = this.classifyRefreshLogLine(line);
+                    return `<span class="refresh-log-line ${className}">${this.escapeHtml(line)}</span>`;
+                }).join('');
+                if (logs.length !== this.refreshLastLogCount) {
+                    logEl.scrollTop = logEl.scrollHeight;
+                    this.refreshLastLogCount = logs.length;
+                }
+            },
+
+            async copyRefreshLog(event) {
+                const logText = document.getElementById('refresh-log-output')?.textContent || '';
+                if (!logText.trim()) return;
+                await navigator.clipboard.writeText(logText);
+                const btn = event?.currentTarget;
+                if (btn) {
+                    const old = btn.textContent;
+                    btn.textContent = 'Copied';
+                    window.setTimeout(() => {
+                        btn.textContent = old;
+                    }, 1200);
+                }
+            },
+
+            highlightText(text, search) {
+                if (!search || !text) return text;
+                const regex = new RegExp(`(${search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                return String(text).replace(regex, '<span class="highlight">$1</span>');
+            },
+
+            formatValue(value, compact = true) {
+                if (value === null || value === undefined || value === '') return '-';
+                if (typeof value === 'object') {
+                    try {
+                        return JSON.stringify(value, null, compact ? 0 : 2);
+                    } catch (e) {
+                        return String(value);
+                    }
+                }
+                return String(value);
+            },
+
+            formatTableValue(value) {
+                return this.formatValue(value, true);
+            },
+
+            formatDetailValue(value) {
+                return this.formatValue(value, false);
+            },
+
+            formatCount(value) {
+                return new Intl.NumberFormat('en-US').format(Number(value) || 0);
+            },
+
+            renderCopyButton(text, extraClasses = '') {
+                const safeText = this.escapeHtml(this.formatValue(text, false));
+                const classes = ['copy-icon-btn', extraClasses].filter(Boolean).join(' ');
+                return `
+                    <button
+                        type="button"
+                        class="${classes}"
+                        data-copy="${safeText}"
+                        onclick="App.copyFromButton(this, event)"
+                        title="Copy value"
+                        aria-label="Copy value">
+                        <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path>
+                        </svg>
+                    </button>`;
+            },
+
+            getCustomerLabel(customer) {
+                return customer?.name || 'Customer';
+            },
+
+            async loadCustomers() {
+                const container = document.getElementById('view-dashboard');
+                const customers = this.customers || [];
+                const allData = this.allInstances || [];
+                
+                container.innerHTML = (customers || []).map(c => {
+                    const d = allData.filter(x => x.customerId === c.name);
+                    const comp = d.filter(x => x.reboot_status === 'Completed').length;
+                    const sched = d.filter(x => x.reboot_status === 'Scheduled').length;
+                    const changed = d.filter(x => (x.Status_Change_Signal || 'Stable') !== 'Stable').length;
+                    const label = this.getCustomerLabel(c);
+                    return `
+                    <div onclick="App.enterCustomer('${c.name}')" class="bg-white rounded-3xl border ${changed ? 'border-sky-400 ring-4 ring-sky-100' : 'border-slate-200'} hover:border-blue-500 cursor-pointer p-8 transition-all group shadow-sm hover:shadow-xl flex flex-col h-full">
+                        <div class="flex items-start justify-between gap-4">
+                            <h3 class="font-black text-slate-900 text-2xl group-hover:text-blue-600 transition-colors">${label}</h3>
+                        </div>
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-2">Refreshed: ${c.lastImport ? new Date(c.lastImport).toLocaleString() : 'Never'}</p>
+                        ${changed ? `<div class="mt-4 inline-flex items-center gap-2 self-start px-3 py-1 rounded-full bg-sky-50 text-sky-700 border border-sky-200 text-[9px] font-black uppercase tracking-widest">Signal Active · ${this.formatCount(changed)} Change${changed === 1 ? '' : 's'}</div>` : ''}
+                        <div class="grid grid-cols-4 gap-3 mt-8">
+                            <div class="bg-green-50 p-4 rounded-2xl border border-green-100 text-green-700 font-black text-center"><p class="text-[8px] uppercase opacity-60 mb-1">Done</p>${this.formatCount(comp)}</div>
+                            <div class="bg-amber-50 p-4 rounded-2xl border border-amber-100 text-amber-700 font-black text-center"><p class="text-[8px] uppercase opacity-60 mb-1">Sched</p>${this.formatCount(sched)}</div>
+                            <div class="bg-sky-50 p-4 rounded-2xl border border-sky-200 text-sky-700 font-black text-center"><p class="text-[8px] uppercase opacity-60 mb-1">Change</p>${this.formatCount(changed)}</div>
+                            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-slate-700 font-black text-center"><p class="text-[8px] uppercase opacity-60 mb-1">Fleet</p>${this.formatCount(d.length)}</div>
+                        </div>
+                    </div>`;
+                }).join('');
+                if (!container.innerHTML) {
+                    container.innerHTML = `
+                    <div class="col-span-full bg-white rounded-3xl border border-slate-200 p-10 text-center shadow-sm">
+                        <h3 class="text-xl font-black text-slate-800">No Fleet Snapshot Loaded</h3>
+                        <p class="mt-3 text-sm text-slate-500">This is expected on the first run or if <code>fleet_data.json</code> does not exist yet on the host serving the portal.</p>
+                        <p class="mt-2 text-sm text-slate-500">Click <b>Refresh Data</b> to open the OCI Refresh Console, run the collector on this host, create the first <code>fleet_data.json</code>, and reload the dashboard when the build completes.</p>
+                        <div class="mt-8 max-w-4xl mx-auto">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                    <div class="flex items-start gap-3">
+                                        <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">1</span>
+                                        <div>
+                                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Configure OCI Access</p>
+                                            <div class="mt-2 space-y-3 text-left">
+                                                <div class="text-[12px] leading-relaxed text-slate-600">
+                                                    <span class="block font-black text-slate-700">Option 1:</span>
+                                                    <span>Set up <code>~/.oci/config</code> with an </span>
+                                                    <button type="button" onclick="App.toggleSetupModal('config', true)" class="font-black text-[#c74634] underline decoration-[#efc6be] underline-offset-4 hover:text-[#9f3022]">API key</button>
+                                                    <span class="block text-slate-400">(easy for local deployment)</span>
+                                                </div>
+                                                <div class="text-[12px] leading-relaxed text-slate-600">
+                                                    <span class="block font-black text-slate-700">Option 2:</span>
+                                                    <span>Run this portal on OCI compute with </span>
+                                                    <button type="button" onclick="App.toggleSetupModal('principal', true)" class="font-black text-[#c74634] underline decoration-[#efc6be] underline-offset-4 hover:text-[#9f3022]">instance principals</button>.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                    <div class="flex items-start gap-3">
+                                        <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">2</span>
+                                        <div>
+                                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Start The Portal Host</p>
+                                            <p class="mt-2 text-[12px] leading-relaxed text-slate-600">Launch <code>portal_server.py</code> on the same host that will run the collector and serve <code>fleet_data.json</code>.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                    <div class="flex items-start gap-3">
+                                        <span class="w-8 h-8 rounded-full bg-[#c74634] text-white flex items-center justify-center text-[11px] font-black shrink-0">3</span>
+                                        <div>
+                                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Initialize The First Snapshot</p>
+                                            <p class="mt-2 text-[12px] leading-relaxed text-slate-600">Use the button below to call the OCI collector, create the first <code>fleet_data.json</code>, and load the tenancy data into the grid.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-8 flex flex-col items-center justify-center gap-3">
+                            <button onclick="App.openRefreshConsole()" class="bg-[#c74634] text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#9f3022] transition-all">Initialize Data via OCI API</button>
+                            <p class="max-w-3xl text-center text-[11px] text-slate-400">This opens the OCI Refresh Console, starts the collector on the current host, builds the first <code>fleet_data.json</code>, and reloads the portal when the initialization completes. If you opened the file directly instead of through <code>portal_server.py</code>, the modal will show the exact startup command to use first.</p>
+                            <a href="./README.md" target="_blank" rel="noopener noreferrer" class="text-[10px] font-black uppercase tracking-widest text-[#c74634] underline decoration-[#efc6be] underline-offset-4 hover:text-[#9f3022]">Open Full Setup Guide (README.md)</a>
+                        </div>
+                    </div>`;
+                }
+            },
+
+            enterCustomer(name) {
+                this.currentCustomer = name;
+                this.currentCustomerLabel = this.getCustomerLabel((this.customers || []).find(customer => customer.name === name));
+                document.getElementById('view-dashboard').classList.add('hidden');
+                document.getElementById('view-portal').classList.remove('hidden');
+                document.getElementById('back-to-home').classList.remove('hidden');
+                document.getElementById('active-customer-name').textContent = this.currentCustomerLabel || name;
+                this.loadCustomerData();
+            },
+
+            exitToDashboard() {
+                this.currentCustomer = null;
+                this.currentCustomerLabel = null;
+                document.getElementById('view-dashboard').classList.remove('hidden');
+                document.getElementById('view-portal').classList.add('hidden');
+                document.getElementById('back-to-home').classList.add('hidden');
+                this.closePanel(); this.loadCustomers();
+            },
+
+            loadCustomerData() {
+                this.data = (this.allInstances || []).filter(row => row.customerId === this.currentCustomer);
+                const allKeys = new Set();
+                this.data.forEach(item => Object.keys(item).forEach(k => allKeys.add(k)));
+                allKeys.delete('customerId'); allKeys.delete('uniqueKey');
+                const others = Array.from(allKeys).filter(k => !this.coreKeys.includes(k)).sort();
+                this.headers = [...this.coreKeys, ...others];
+                this.pagination.page = 1;
+                document.getElementById('page-size-select').value = String(this.pagination.pageSize);
+                this.render();
+            },
+
+            getFilterOptionCounts(filterKey) {
+                const search = this.filters.search.toLowerCase();
+                const scopedRows = this.data.filter(d => {
+                    const matchesSearch = Object.values(d).some(v => this.formatTableValue(v).toLowerCase().includes(search));
+                    if (!matchesSearch) return false;
+                    return ['reboot_status', 'Status_Change_Signal', 'Compartment_Name', 'Region', 'Availability_Domain', 'Fault_Domain', 'Shape'].every(key => {
+                        if (key === filterKey) return true;
+                        return this.filters[key] === 'all' || d[key] === this.filters[key];
+                    });
+                });
+
+                const counts = new Map();
+                scopedRows.forEach(row => {
+                    const value = row[filterKey];
+                    if (!value) return;
+                    counts.set(value, (counts.get(value) || 0) + 1);
+                });
+
+                return {
+                    total: scopedRows.length,
+                    counts
+                };
+            },
+
+            updateDropdowns() {
+                ['reboot_status', 'Status_Change_Signal', 'Compartment_Name', 'Region', 'Availability_Domain', 'Fault_Domain', 'Shape'].forEach(f => {
+                    const vals = [...new Set(this.data.map(d => d[f]))].filter(v => v).sort();
+                    const sel = document.getElementById(`filter-${f}`);
+                    const filterLabels = {
+                        reboot_status: 'Statuses',
+                        Status_Change_Signal: 'Signals',
+                        Compartment_Name: 'Compartments',
+                        Region: 'Regions',
+                        Availability_Domain: 'Availability Domains',
+                        Fault_Domain: 'Fault Domains',
+                        Shape: 'Shapes'
+                    };
+                    const lbl = filterLabels[f] || f.replace(/_/g, ' ');
+                    if (!sel) return;
+
+                    const previousValue = this.filters[f] || 'all';
+                    const { total, counts } = this.getFilterOptionCounts(f);
+                    sel.innerHTML = `<option value="all">All ${lbl} (${this.formatCount(total)})</option>` + vals.map(v => `<option value="${this.escapeHtml(v)}">${this.escapeHtml(v)} (${this.formatCount(counts.get(v) || 0)})</option>`).join('');
+                    sel.value = vals.includes(previousValue) ? previousValue : 'all';
+                });
+            },
+
+            toggleSort(col) {
+                if (this.sort.column === col) this.sort.direction = this.sort.direction === 'asc' ? 'desc' : 'asc';
+                else { this.sort.column = col; this.sort.direction = 'asc'; }
+                this.render();
+            },
+
+            changePage(delta) {
+                const totalPages = Math.max(1, Math.ceil(this.filtered.length / this.pagination.pageSize));
+                this.pagination.page = Math.min(totalPages, Math.max(1, this.pagination.page + delta));
+                this.render();
+            },
+
+            updatePaginationControls(pageRows) {
+                const total = this.filtered.length;
+                const pageSize = this.pagination.pageSize;
+                const totalPages = Math.max(1, Math.ceil(total / pageSize));
+                if (this.pagination.page > totalPages) this.pagination.page = totalPages;
+                const currentPage = this.pagination.page;
+                const start = total === 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
+                const end = total === 0 ? 0 : start + pageRows.length - 1;
+
+                document.getElementById('results-summary').textContent = total === 0
+                    ? 'Showing 0 of 0 Results'
+                    : `Showing ${this.formatCount(start)}-${this.formatCount(end)} of ${this.formatCount(total)} Results`;
+                document.getElementById('pagination-status').textContent = `Page ${this.formatCount(currentPage)} of ${this.formatCount(totalPages)}`;
+                document.getElementById('pagination-prev').disabled = currentPage <= 1;
+                document.getElementById('pagination-next').disabled = currentPage >= totalPages;
+            },
+
+            render() {
+                const body = document.getElementById('table-body'), head = document.getElementById('table-head'), s = this.filters.search.toLowerCase();
+                this.filtered = this.data.filter(d => {
+                    const mS = Object.values(d).some(v => this.formatTableValue(v).toLowerCase().includes(s));
+                    return mS
+                        && (this.filters.Compartment_Name === 'all' || d.Compartment_Name === this.filters.Compartment_Name)
+                        && (this.filters.Region === 'all' || d.Region === this.filters.Region)
+                        && (this.filters.Availability_Domain === 'all' || d.Availability_Domain === this.filters.Availability_Domain)
+                        && (this.filters.Fault_Domain === 'all' || d.Fault_Domain === this.filters.Fault_Domain)
+                        && (this.filters.Shape === 'all' || d.Shape === this.filters.Shape)
+                        && (this.filters.Status_Change_Signal === 'all' || (d.Status_Change_Signal || 'Stable') === this.filters.Status_Change_Signal)
+                        && (this.filters.reboot_status === 'all' || d.reboot_status === this.filters.reboot_status);
+                });
+                if (this.sort.column) {
+                    this.filtered.sort((a, b) => {
+                        let va = this.formatTableValue(a[this.sort.column]).toLowerCase(), vb = this.formatTableValue(b[this.sort.column]).toLowerCase();
+                        return this.sort.direction === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+                    });
+                }
+
+                this.updateDropdowns();
+                const totalPages = Math.max(1, Math.ceil(this.filtered.length / this.pagination.pageSize));
+                if (this.pagination.page > totalPages) this.pagination.page = totalPages;
+                const pageStartIndex = (this.pagination.page - 1) * this.pagination.pageSize;
+                const pageRows = this.filtered.slice(pageStartIndex, pageStartIndex + this.pagination.pageSize);
+                this.updatePaginationControls(pageRows);
+                
+                document.getElementById('stat-completed').textContent = this.formatCount(this.filtered.filter(d => d.reboot_status === 'Completed').length);
+                document.getElementById('stat-scheduled').textContent = this.formatCount(this.filtered.filter(d => d.reboot_status === 'Scheduled').length);
+                document.getElementById('stat-not-scheduled').textContent = this.formatCount(this.filtered.filter(d => d.reboot_status === 'Not Scheduled').length);
+                document.getElementById('stat-changed').textContent = this.formatCount(this.filtered.filter(d => (d.Status_Change_Signal || 'Stable') !== 'Stable').length);
+                document.getElementById('stat-filtered').textContent = this.formatCount(this.filtered.length);
+                document.getElementById('stat-total').textContent = this.formatCount(this.data.length);
+
+                head.innerHTML = `<tr>${this.headers.map(h => {
+                    const isS = this.sort.column === h, arr = isS ? (this.sort.direction === 'asc' ? '↑' : '↓') : '↕';
+                    return `<th onclick="App.toggleSort('${h}')" class="p-4 border-b text-[10px] font-black uppercase tracking-widest sortable">${this.headerMap[h] || h.replace(/_/g, ' ')} <span class="sort-indicator ${isS ? 'sort-active' : ''}">${arr}</span></th>`;
+                }).join('')}</tr>`;
+
+                body.innerHTML = pageRows.map(row => `
+                    <tr class="${(row.Status_Change_Signal || 'Stable') !== 'Stable' ? 'row-signal-changed' : 'hover:bg-blue-50/50'} cursor-pointer transition-colors" onclick="App.openPanel('${row.ID}')">
+                        ${this.headers.map(h => {
+                            const rawValue = row[h];
+                            const v = this.formatTableValue(rawValue);
+                            if (h === 'ID') return `<td class="p-4 border-b text-slate-500"><div class="flex items-center gap-2">${this.renderCopyButton(v)}${this.highlightText(v, s)}</div></td>`;
+                            if (h === 'Status_Change_Signal') return `<td class="p-4 border-b"><span class="px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-tighter ${(v !== 'Stable' && v !== '-') ? 'status-signal-changed' : 'status-signal-stable'}">${v}</span></td>`;
+                            if (h === 'reboot_status') return `<td class="p-4 border-b"><span class="px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-tighter ${v === 'Scheduled' ? 'status-scheduled' : (v === 'Completed' ? 'status-completed' : 'status-not-scheduled')}">${v}</span></td>`;
+                            if (h.includes('IST')) return `<td class="p-4 border-b font-black text-blue-600 bg-blue-50/80">${this.highlightText(v, s)}</td>`;
+                            if (h.includes('EDT')) return `<td class="p-4 border-b font-black text-emerald-600 bg-emerald-50/70">${this.highlightText(v, s)}</td>`;
+                            return `<td class="p-4 border-b text-slate-500">${this.highlightText(v, s)}</td>`;
+                        }).join('')}
+                    </tr>`).join('');
+            },
+
+            exportCSV() {
+                const csvHeaders = this.headers.map(h => this.headerMap[h] || h);
+                const csvRows = [csvHeaders.join(',')];
+                this.filtered.forEach(r => csvRows.push(this.headers.map(h => `"${this.formatTableValue(r[h]).replace(/"/g, '""')}"`).join(',')));
+                const b = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+                const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `${this.currentCustomer}_Export.csv`; a.click();
+            },
+
+            closePanel() { document.getElementById('detail-panel').classList.add('hidden'); },
+            openPanel(id) {
+                const r = this.data.find(d => d.ID === id); if (!r) return;
+                document.getElementById('detail-panel').classList.remove('hidden');
+                document.getElementById('panel-title').textContent = r.Display_Name || 'System Asset';
+                document.getElementById('panel-content').innerHTML = this.headers.map(h => `
+                    <tr>
+                        <td class="px-4 py-2.5 font-black text-slate-400 uppercase text-[10px] w-40 bg-slate-50 border-r border-slate-200 align-middle">${this.headerMap[h] || h.replace(/_/g, ' ')}</td>
+                        <td class="px-4 py-2.5 font-mono text-slate-700 text-[11px] font-bold align-middle">
+                            <div class="flex items-start gap-2 leading-snug">
+                                ${this.renderCopyButton(r[h], 'mt-0.5')}
+                                <span class="block min-w-0 flex-1 select-all whitespace-pre-wrap break-words">${this.escapeHtml(this.formatDetailValue(r[h]))}</span>
+                            </div>
+                        </td>
+                    </tr>`).join('');
+            },
+
+            toggleAbout(show) { document.getElementById('about-modal').classList.toggle('hidden', !show); },
+            toggleSetupModal(type, show) {
+                const modalId = type === 'principal' ? 'principal-setup-modal' : 'config-setup-modal';
+                document.getElementById(modalId).classList.toggle('hidden', !show);
+            },
+            copyFromButton(button, e) {
+                const text = button?.getAttribute('data-copy') || '';
+                this.copyToClipboard(text, e, button);
+            },
+            copyToClipboard(text, e, sourceButton = null) {
+                if (e) e.stopPropagation();
+                navigator.clipboard.writeText(text);
+                const btn = sourceButton || e?.currentTarget;
+                if (btn) { 
+                    const old = btn.innerHTML;
+                    btn.innerHTML = `
+                        <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>`;
+                    setTimeout(() => { btn.innerHTML = old; }, 1000);
+                }
+            }
+        };
+        
+        App.init();
+    </script>
+</body>
+</html>
