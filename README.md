@@ -64,7 +64,7 @@ If you are running locally in VS Code, open the project folder first and use the
 Commands:
 
 ```bash
-cd "/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex"
+cd "/path/to/OCI Tenancy Explorer"
 python3 -m pip install oci
 python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json
 python3 portal_server.py --profile DEFAULT
@@ -401,7 +401,7 @@ python3 -m pip install oci-cli
 This README assumes the project is located at:
 
 ```bash
-/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex
+"/path/to/OCI Tenancy Explorer"
 ```
 
 If you place it somewhere else, the commands remain the same after you `cd` into the project directory.
@@ -496,7 +496,7 @@ chmod 700 ~/.oci
 5. Generate the first fleet snapshot:
 
 ```bash
-cd "/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex"
+cd "/path/to/OCI Tenancy Explorer"
 python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json
 ```
 
@@ -525,7 +525,7 @@ Use this when the customer wants the portal and collector to run inside OCI and 
 5. Generate the first fleet snapshot directly on the OCI host:
 
 ```bash
-cd "/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex"
+cd "/path/to/OCI Tenancy Explorer"
 python3 build_fleet_data.py --auth instance_principal --output fleet_data.json
 ```
 
@@ -642,7 +642,7 @@ Expanded authentication checklist:
 Commands:
 
 ```bash
-cd "/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex"
+cd "/path/to/OCI Tenancy Explorer"
 python3 -m pip install oci
 python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json
 python3 portal_server.py --profile DEFAULT
@@ -661,7 +661,7 @@ At that point the application is ready to use.
 To rebuild the JSON snapshot without starting the UI server:
 
 ```bash
-cd "/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex"
+cd "/path/to/OCI Tenancy Explorer"
 python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json
 ```
 
@@ -685,7 +685,7 @@ Notes:
 Start the local portal:
 
 ```bash
-cd "/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex"
+cd "/path/to/OCI Tenancy Explorer"
 python3 portal_server.py --profile DEFAULT
 ```
 
@@ -946,7 +946,7 @@ http://127.0.0.1:8765/index.html
 Refresh every 30 minutes:
 
 ```cron
-*/30 * * * * cd "/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex" && /usr/bin/python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json >> refresh.log 2>&1
+*/30 * * * * cd "/path/to/OCI Tenancy Explorer" && /usr/bin/python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json >> refresh.log 2>&1
 ```
 
 ### launchd or systemd
@@ -970,7 +970,7 @@ Causes:
 Fix:
 
 ```bash
-cd "/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex"
+cd "/path/to/OCI Tenancy Explorer"
 python3 portal_server.py --profile DEFAULT
 ```
 
@@ -1191,7 +1191,7 @@ When a customer reports an issue, ask for:
 If you want the shortest path to a working deployment:
 
 ```bash
-cd "/Users/user_name/Desktop/Customers/Oracle/Live Migrate Manager - Codex"
+cd "/path/to/OCI Tenancy Explorer"
 python3 -m pip install oci
 python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json
 python3 portal_server.py --profile DEFAULT
