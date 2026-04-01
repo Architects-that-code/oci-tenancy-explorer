@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-04-01T16:17:22Z",
+  "source": {
+    "tenancyName": "matswa2345",
+    "tenancyId": "ocid1.tenancy.oc1..aaaaaaaag3oqe5yuwhwog62rktfrpkfcm2cxakffbk3o6r2cneumypqyjleq",
+    "region": "us-ashburn-1",
+    "detailMode": "get_announcement enrichment when permitted",
+    "latestInChainOnly": true
+  },
+  "summary": {
+    "announcementCount": 0,
+    "activeCount": 0,
+    "inactiveCount": 0,
+    "bannerCount": 0,
+    "serviceCount": 0,
+    "regionCount": 0,
+    "actionRequiredCount": 0,
+    "actionRecommendedCount": 0,
+    "topServices": [],
+    "typeBreakdown": [],
+    "detailAccessibleCount": 0,
+    "warningCount": 0
+  },
+  "announcements": [],
+  "warnings": [],
+  "notes": [
+    "Announcements are listed from the tenancy root compartment using OCI Announcements Service.",
+    "This snapshot requests only the latest visible announcement in each chain to reduce duplicate operational updates.",
+    "Announcement detail enrichment is best-effort and can vary based on IAM access to announcement details."
+  ]
+}
