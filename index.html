@@ -5872,8 +5872,9 @@
                 });
 
                 return {
-                    total: counts.size,
-                    counts
+                    optionCount: counts.size,
+                    counts,
+                    values: [...counts.keys()].sort()
                 };
             },
 
@@ -5894,9 +5895,10 @@
                     if (!sel) return;
 
                     const previousValue = this.filters[f] || 'all';
-                    const { total, counts } = this.getFilterOptionCounts(f);
-                    sel.innerHTML = `<option value="all">All ${lbl} (${this.formatCount(total)})</option>` + vals.map(v => `<option value="${this.escapeHtml(v)}">${this.escapeHtml(v)} (${this.formatCount(counts.get(v) || 0)})</option>`).join('');
-                    sel.value = vals.includes(previousValue) ? previousValue : 'all';
+                    const { optionCount, counts, values } = this.getFilterOptionCounts(f);
+                    const visibleValues = values.length ? values : vals;
+                    sel.innerHTML = `<option value="all">All ${lbl} (${this.formatCount(optionCount)})</option>` + visibleValues.map(v => `<option value="${this.escapeHtml(v)}">${this.escapeHtml(v)} (${this.formatCount(counts.get(v) || 0)})</option>`).join('');
+                    sel.value = visibleValues.includes(previousValue) ? previousValue : 'all';
                 });
             },
 

@@ -242,6 +242,7 @@ This is often the best long-term model for shared internal deployments because A
 - `Fleet View` supports CSV export of the currently filtered results.
 - `Shape Explorer`, `Opportunities`, and `Console Announcements` each have their own refresh flows in addition to `Sync Data`.
 - The app is designed for one tenancy at a time, with tenancy-level visibility as the default operating model.
+- If OCI Console shows a maintenance date for an instance but the portal does not, review the refresh warnings first. The collector attempts maintenance-event enrichment per compartment and falls back to instance summary data when the lookup fails, times out, or returns no maintenance event timing.
 
 ## Security Notes
 
