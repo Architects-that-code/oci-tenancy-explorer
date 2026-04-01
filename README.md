@@ -24,6 +24,16 @@ The project has three main parts:
 - `portal_server.py`: serves the UI and provides refresh endpoints
 - `index.html`: renders the tenancy dashboard from `fleet_data.json`
 
+## Preview
+
+### Landing / Entry View
+
+![OCI Tenancy Explorer Entry View](images/entry.png)
+
+### Dashboard / Index View
+
+![OCI Tenancy Explorer Dashboard View](images/index.png)
+
 ## Quick Start (Direct)
 
 1. Clone the repository:
