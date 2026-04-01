@@ -10,25 +10,32 @@ The project has three main parts:
 
 ## Quick Start (Direct)
 
-1. Install Python dependency:
+1. Clone the repository:
+
+```bash
+git clone git@github.com:Architects-that-code/oci-tenancy-explorer.git
+cd oci-tenancy-explorer
+```
+
+2. Install Python dependency:
 
 ```bash
 python3 -m pip install oci
 ```
 
-2. Build the initial snapshot:
+3. Build the initial snapshot:
 
 ```bash
 python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json
 ```
 
-3. Start the local portal:
+4. Start the local portal:
 
 ```bash
 python3 portal_server.py --profile DEFAULT
 ```
 
-4. Open:
+5. Open:
 
 ```text
 http://127.0.0.1:8765/index.html
@@ -40,7 +47,14 @@ Notes:
 
 ## Quick Start (Docker)
 
-Build and run:
+1. Clone the repository:
+
+```bash
+git clone git@github.com:Architects-that-code/oci-tenancy-explorer.git
+cd oci-tenancy-explorer
+```
+
+2. Build and run:
 
 ```bash
 docker build -t oci-tenancy-explorer .
@@ -53,19 +67,19 @@ docker run --rm -p 8765:8765 \
   oci-tenancy-explorer
 ```
 
-Open:
+3. Open:
 
 ```text
 http://127.0.0.1:8765/index.html
 ```
 
-Docker Compose:
+4. Docker Compose:
 
 ```bash
 docker compose up --build
 ```
 
-For OCI instance principal on an OCI host:
+5. For OCI instance principal on an OCI host:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.oci-instance-principal.yml up --build
