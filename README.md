@@ -2,6 +2,22 @@
 
 OCI Tenancy Explorer is a lightweight dashboard for viewing OCI compute maintenance and reboot-related signals across a tenancy.
 
+## Purpose
+
+This tool is intended to give operations teams and tenancy administrators a quick answer to:
+
+`Which compute instances have reboot-related maintenance signals, and what changed since the last snapshot?`
+
+It provides a simple, portable operational view without requiring a full backend application stack.
+
+## API Access Scope
+
+OCI Tenancy Explorer only uses OCI publicly accessible service APIs through the official OCI SDK, authenticated with normal OCI credentials or instance principals.
+
+- Uses read-oriented tenancy metadata calls (for example: region subscriptions, compartments, compute instance inventory, maintenance events, and optional OS Management Hub metadata).
+- Does not require private/undocumented APIs.
+- Does not SSH into instances or read guest OS data directly.
+
 The project has three main parts:
 
 - `build_fleet_data.py`: collects OCI data and writes `fleet_data.json`
