@@ -50,6 +50,11 @@
         .status-scheduled { background-color: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
         .status-not-scheduled { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
         .status-completed { background-color: #dcfce7; color: #166534; border: 1px solid #22c55e; }
+        .status-running { background-color: #dcfce7; color: #166534; border: 1px solid #22c55e; }
+        .status-stopped { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        .status-state-transition { background-color: #dbeafe; color: #1d4ed8; border: 1px solid #60a5fa; }
+        .status-state-warning { background-color: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
+        .status-state-error { background-color: #fee2e2; color: #b91c1c; border: 1px solid #f87171; }
         .status-signal-changed { background-color: #fdf1ef; color: var(--oci-red); border: 1px solid #e8a398; }
         .status-signal-stable { background-color: #fbf8f6; color: #6e655f; border: 1px solid #d7cbc4; }
         .row-signal-changed { background: linear-gradient(90deg, rgba(253,241,239,0.95) 0%, rgba(255,255,255,1) 14%); }
@@ -1016,8 +1021,23 @@
                             <div class="flex items-center gap-3 text-[11px] font-bold text-slate-500">
                                 <span id="results-summary">Showing 0 of 0 Results</span>
                                 <span id="pagination-status" class="rounded-full bg-white px-3 py-1 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400">Page 1 of 1</span>
+                                <span id="column-visibility-summary" class="rounded-full bg-white px-3 py-1 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400">Columns: 0</span>
                             </div>
                             <div class="flex flex-wrap items-center gap-3 lg:justify-end">
+                                <div class="relative">
+                                    <button id="column-filter-btn" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:bg-slate-100">Columns</button>
+                                    <div id="column-filter-panel" class="hidden absolute right-0 top-[calc(100%+0.75rem)] z-30 w-[320px] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Visible Columns</p>
+                                            <span id="column-filter-count" class="text-[10px] font-black uppercase tracking-widest text-slate-400">0 selected</span>
+                                        </div>
+                                        <div class="mt-3 flex flex-wrap gap-2">
+                                            <button id="column-filter-select-all" type="button" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-slate-300 hover:bg-white">Select All</button>
+                                            <button id="column-filter-core-only" type="button" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-slate-300 hover:bg-white">Core Only</button>
+                                        </div>
+                                        <div id="column-filter-options" class="mt-4 max-h-[320px] space-y-2 overflow-y-auto pr-1"></div>
+                                    </div>
+                                </div>
                                 <button id="export-filtered-btn" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-sm transition-all">Export CSV (respects filtered view)</button>
                                 <label for="page-size-select" class="text-[10px] font-black uppercase tracking-widest text-slate-400">Rows</label>
                                 <select id="page-size-select" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 outline-none">
@@ -1919,10 +1939,12 @@
             chartInstances: {},
             jsonGeneratedAt: '',
             inspectorState: null,
+            visibleColumns: [],
+            columnFilterOpen: false,
             pagination: { page: 1, pageSize: 25 },
-            coreKeys: ["ID", "Display_Name", "Status_Change_Signal", "reboot_status", "Maintenance_Action", "Maintenance_Event_Status", "Live_Migration_Preference", "Compartment_Name", "Region", "Fault_Domain", "Availability_Domain", "Previous_Status", "Status_Changed_UTC", "Last_Reboot_UTC", "Last_Reboot_IST", "Last_Reboot_EDT", "Reboot_Evidence", "Maintenance_UTC", "time_window_start", "Maintenance_IST", "Maintenance_EDT", "Maintenance_Source"],
+            coreKeys: ["ID", "Display_Name", "State", "Status_Change_Signal", "reboot_status", "Maintenance_Action", "Maintenance_Event_Status", "Live_Migration_Preference", "Compartment_Name", "Region", "Fault_Domain", "Availability_Domain", "Previous_Status", "Status_Changed_UTC", "Last_Reboot_UTC", "Last_Reboot_IST", "Last_Reboot_EDT", "Reboot_Evidence", "Maintenance_UTC", "time_window_start", "Maintenance_IST", "Maintenance_EDT", "Maintenance_Source"],
             headerMap: {
-                "ID": "OCID", "Display_Name": "Display Name", "reboot_status": "Status",
+                "ID": "OCID", "Display_Name": "Display Name", "State": "Instance State", "reboot_status": "Status",
                 "Maintenance_Action": "Maintenance Action", "Maintenance_Event_Status": "Maintenance Event Status", "Live_Migration_Preference": "Live Migration Preference",
                 "Status_Change_Signal": "Signal", "Previous_Status": "Previous Status", "Status_Changed_UTC": "Changed At (UTC)",
                 "Last_Reboot_UTC": "Last Reboot (UTC)", "Last_Reboot_IST": "Last Reboot (IST)", "Last_Reboot_EDT": "Last Reboot (EDT)", "Reboot_Evidence": "Reboot Evidence",
@@ -2115,6 +2137,15 @@
                 document.getElementById('search-input').oninput = (e) => {
                     this.handleFleetSearchInput(e.target.value);
                 };
+                document.getElementById('column-filter-btn').onclick = (e) => {
+                    e.stopPropagation();
+                    this.toggleColumnFilterPanel();
+                };
+                document.getElementById('column-filter-panel').onclick = (e) => {
+                    e.stopPropagation();
+                };
+                document.getElementById('column-filter-select-all').onclick = () => this.selectAllColumns();
+                document.getElementById('column-filter-core-only').onclick = () => this.selectCoreColumns();
                 document.getElementById('export-filtered-btn').onclick = () => this.exportCSV();
                 document.getElementById('page-size-select').onchange = (e) => {
                     this.pagination.pageSize = Number(e.target.value) || 25;
@@ -2162,6 +2193,9 @@
                 document.getElementById('refresh-modal-copy-log').onclick = (e) => this.copyRefreshLog(e);
                 document.getElementById('refresh-modal-run').onclick = () => this.startServerRefresh();
                 document.addEventListener('click', (event) => {
+                    if (!event.target.closest('#column-filter-panel') && !event.target.closest('#column-filter-btn')) {
+                        this.toggleColumnFilterPanel(false);
+                    }
                     if (event.target.closest('.section-info-button') || event.target.closest('#section-info-popover')) return;
                     this.hideSectionInfoPopover();
                 });
@@ -2484,6 +2518,89 @@
                     .replaceAll('>', '&gt;')
                     .replaceAll('"', '&quot;')
                     .replaceAll("'", '&#39;');
+            },
+
+            syncVisibleColumns() {
+                const available = this.headers || [];
+                if (!available.length) {
+                    this.visibleColumns = [];
+                    this.renderColumnFilterControls();
+                    return;
+                }
+                const current = Array.isArray(this.visibleColumns) ? this.visibleColumns : [];
+                const kept = current.filter(header => available.includes(header));
+                const added = available.filter(header => !kept.includes(header));
+                this.visibleColumns = [...kept, ...added];
+                this.renderColumnFilterControls();
+            },
+
+            getVisibleHeaders() {
+                const selected = new Set(this.visibleColumns || []);
+                const visibleHeaders = (this.headers || []).filter(header => selected.has(header));
+                return visibleHeaders.length ? visibleHeaders : (this.headers || []);
+            },
+
+            toggleColumnFilterPanel(forceState = null) {
+                this.columnFilterOpen = forceState === null ? !this.columnFilterOpen : Boolean(forceState);
+                const panel = document.getElementById('column-filter-panel');
+                if (!panel) return;
+                panel.classList.toggle('hidden', !this.columnFilterOpen);
+            },
+
+            setColumnVisibility(header, isVisible) {
+                const selected = new Set(this.visibleColumns || []);
+                if (isVisible) selected.add(header);
+                else selected.delete(header);
+                const next = (this.headers || []).filter(item => selected.has(item));
+                this.visibleColumns = next.length ? next : [(this.headers || [header])[0]];
+                this.renderColumnFilterControls();
+                this.render();
+            },
+
+            selectAllColumns() {
+                this.visibleColumns = [...(this.headers || [])];
+                this.renderColumnFilterControls();
+                this.render();
+            },
+
+            selectCoreColumns() {
+                const preferred = this.coreKeys.filter(header => (this.headers || []).includes(header));
+                this.visibleColumns = preferred.length ? preferred : [...(this.headers || [])];
+                this.renderColumnFilterControls();
+                this.render();
+            },
+
+            renderColumnFilterControls() {
+                const available = this.headers || [];
+                const selected = new Set(this.visibleColumns || []);
+                const summaryEl = document.getElementById('column-visibility-summary');
+                const countEl = document.getElementById('column-filter-count');
+                const optionsEl = document.getElementById('column-filter-options');
+                if (summaryEl) {
+                    summaryEl.textContent = `Columns: ${this.formatCount(selected.size)} / ${this.formatCount(available.length)}`;
+                }
+                if (countEl) {
+                    countEl.textContent = `${this.formatCount(selected.size)} selected`;
+                }
+                if (!optionsEl) return;
+                if (!available.length) {
+                    optionsEl.innerHTML = '<div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[11px] text-slate-500">Column options will appear after fleet data loads.</div>';
+                    return;
+                }
+                optionsEl.innerHTML = available.map(header => {
+                    const checked = selected.has(header);
+                    const label = this.headerMap[header] || header.replace(/_/g, ' ');
+                    return `
+                        <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-[11px] text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50">
+                            <input
+                                type="checkbox"
+                                class="h-4 w-4 rounded border-slate-300 text-[#c74634] focus:ring-[#c74634]"
+                                ${checked ? 'checked' : ''}
+                                onchange='App.setColumnVisibility(${JSON.stringify(header)}, this.checked)'>
+                            <span class="min-w-0 truncate font-semibold">${this.escapeHtml(label)}</span>
+                        </label>
+                    `;
+                }).join('');
             },
 
             classifyRefreshLogLine(line) {
@@ -3304,6 +3421,16 @@
 
             formatDetailValue(value) {
                 return this.formatValue(value, false);
+            },
+
+            getInstanceStateBadgeClass(value) {
+                const normalized = String(value || '').trim().toUpperCase();
+                if (normalized === 'RUNNING') return 'status-running';
+                if (normalized === 'STOPPED' || normalized === 'TERMINATED') return 'status-stopped';
+                if (['STARTING', 'STOPPING', 'PROVISIONING', 'TERMINATING'].includes(normalized)) return 'status-state-transition';
+                if (['SUSPENDING', 'SUSPENDED', 'RECOVERING'].includes(normalized)) return 'status-state-warning';
+                if (['FAILED', 'FAULTY'].includes(normalized)) return 'status-state-error';
+                return 'status-not-scheduled';
             },
 
             looksLikeOcid(value) {
@@ -6445,6 +6572,7 @@
                 allKeys.delete('customerId'); allKeys.delete('uniqueKey');
                 const others = Array.from(allKeys).filter(k => !this.coreKeys.includes(k)).sort();
                 this.headers = [...this.coreKeys, ...others];
+                this.syncVisibleColumns();
                 this.pagination.page = 1;
                 document.getElementById('page-size-select').value = String(this.pagination.pageSize);
                 this.renderTenancyOverview();
@@ -6534,6 +6662,7 @@
 
             render() {
                 const body = document.getElementById('table-body'), head = document.getElementById('table-head'), s = this.filters.search.toLowerCase();
+                const visibleHeaders = this.getVisibleHeaders();
                 this.filtered = this.data.filter(d => {
                     const mS = Object.values(d).some(v => this.formatTableValue(v).toLowerCase().includes(s));
                     return mS
@@ -6565,19 +6694,21 @@
                 document.getElementById('stat-changed').textContent = this.formatCount(this.filtered.filter(d => (d.Status_Change_Signal || 'Stable') !== 'Stable').length);
                 document.getElementById('stat-filtered').textContent = this.formatCount(this.filtered.length);
                 document.getElementById('stat-total').textContent = this.formatCount(this.data.length);
+                this.renderColumnFilterControls();
 
-                head.innerHTML = `<tr>${this.headers.map(h => {
+                head.innerHTML = `<tr>${visibleHeaders.map(h => {
                     const isS = this.sort.column === h, arr = isS ? (this.sort.direction === 'asc' ? '↑' : '↓') : '↕';
                     return `<th onclick="App.toggleSort('${h}')" class="p-4 border-b text-[10px] font-black uppercase tracking-widest sortable">${this.headerMap[h] || h.replace(/_/g, ' ')} <span class="sort-indicator ${isS ? 'sort-active' : ''}">${arr}</span></th>`;
                 }).join('')}</tr>`;
 
                 body.innerHTML = pageRows.map(row => `
                     <tr class="${(row.Status_Change_Signal || 'Stable') !== 'Stable' ? 'row-signal-changed' : 'hover:bg-blue-50/50'} cursor-pointer transition-colors" onclick="App.openPanel('${row.ID}')">
-                        ${this.headers.map(h => {
+                        ${visibleHeaders.map(h => {
                             const rawValue = row[h];
                             const v = this.formatTableValue(rawValue);
                             if (h === 'ID') return `<td class="p-4 border-b text-slate-500"><div class="flex items-center gap-2">${this.renderCopyButton(v)}<button type="button" onclick='App.openInspectorFromOcid(${JSON.stringify(String(rawValue || ''))}, event)' class="ocid-chip min-w-0 truncate rounded-lg px-3 py-1.5 text-left font-mono text-[11px] font-bold transition-colors">${this.highlightText(v, s)}</button></div></td>`;
                             if (h === 'Status_Change_Signal') return `<td class="p-4 border-b"><span class="px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-tighter ${(v !== 'Stable' && v !== '-') ? 'status-signal-changed' : 'status-signal-stable'}">${v}</span></td>`;
+                            if (h === 'State') return `<td class="p-4 border-b"><span class="px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-tighter ${this.getInstanceStateBadgeClass(v)}">${v}</span></td>`;
                             if (h === 'reboot_status') return `<td class="p-4 border-b"><span class="px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-tighter ${v === 'Scheduled' ? 'status-scheduled' : (v === 'Completed' ? 'status-completed' : 'status-not-scheduled')}">${v}</span></td>`;
                             if (h.includes('IST')) return `<td class="p-4 border-b font-black text-blue-600 bg-blue-50/80">${this.highlightText(v, s)}</td>`;
                             if (h.includes('EDT')) return `<td class="p-4 border-b font-black text-emerald-600 bg-emerald-50/70">${this.highlightText(v, s)}</td>`;
@@ -6587,9 +6718,10 @@
             },
 
             exportCSV() {
-                const csvHeaders = this.headers.map(h => this.headerMap[h] || h);
+                const visibleHeaders = this.getVisibleHeaders();
+                const csvHeaders = visibleHeaders.map(h => this.headerMap[h] || h);
                 const csvRows = [csvHeaders.join(',')];
-                this.filtered.forEach(r => csvRows.push(this.headers.map(h => `"${this.formatTableValue(r[h]).replace(/"/g, '""')}"`).join(',')));
+                this.filtered.forEach(r => csvRows.push(visibleHeaders.map(h => `"${this.formatTableValue(r[h]).replace(/"/g, '""')}"`).join(',')));
                 const b = new Blob([csvRows.join('\n')], { type: 'text/csv' });
                 const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `${this.currentCustomer}_Export.csv`; a.click();
             },
