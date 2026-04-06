@@ -330,6 +330,27 @@ def list_regions(identity_client: Any, tenancy_id: str) -> list[str]:
     return [row.region_name for row in response.data if getattr(row, "status", "READY") == "READY"]
 
 
+def list_availability_domains_for_regions(
+    base_config: dict[str, Any],
+    signer: Any,
+    tenancy_id: str,
+    regions: list[str],
+) -> dict[str, list[str]]:
+    """List availability domains for each subscribed region. Returns {region: [ad_name, ...]}."""
+    region_ads: dict[str, list[str]] = {}
+    for region in regions:
+        try:
+            regional_config = dict(base_config)
+            regional_config["region"] = region
+            regional_client = build_identity_client(regional_config, signer)
+            response = regional_client.list_availability_domains(compartment_id=tenancy_id)
+            region_ads[region] = sorted(ad.name for ad in response.data) if response.data else []
+        except Exception as exc:
+            log(f"Could not list availability domains in {region}: {exc}")
+            region_ads[region] = []
+    return region_ads
+
+
 def list_instances_for_region(
     base_config: dict[str, Any],
     signer: Any,
@@ -993,6 +1014,8 @@ def main() -> int:
     regions = list_regions(identity_client, tenancy_id)
     log(f"Scanning subscribed regions: {', '.join(regions)}")
     emit_event("regions_discovered", regions=regions)
+    region_ads = list_availability_domains_for_regions(config, signer, tenancy_id, regions)
+    log(f"Collected availability domains: {sum(len(v) for v in region_ads.values())} ADs across {len(regions)} regions")
 
     generated_at = utc_now()
     generated_at_epoch_ms = int(generated_at.timestamp() * 1000)
@@ -1037,6 +1060,10 @@ def main() -> int:
             "profile": args.profile if args.auth == "config" else "instance_principal",
             "customerStrategy": args.customer_strategy,
             "regions": regions,
+        },
+        "regionDetails": {
+            region: {"availabilityDomains": ads}
+            for region, ads in region_ads.items()
         },
         "customers": build_customers(instances, generated_at_epoch_ms),
         "instances": instances,

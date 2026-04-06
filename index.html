@@ -40,12 +40,12 @@
         .custom-scrollbar::-webkit-scrollbar-track { background: #f3eeeb; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #d0c3bc; border-radius: 3px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #b29f95; }
-        
+
         .table-container { overflow-x: auto; position: relative; width: 100%; border-radius: 12px; }
         th, td { white-space: nowrap; border-right: 1px solid #f2ebe7; }
         th.sortable { cursor: pointer; transition: background 0.2s; position: relative; }
         th.sortable:hover { background: #fbf1ee; color: var(--oci-red); }
-        
+
         /* STATUS TAGS */
         .status-scheduled { background-color: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
         .status-not-scheduled { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
@@ -53,7 +53,7 @@
         .status-signal-changed { background-color: #fdf1ef; color: var(--oci-red); border: 1px solid #e8a398; }
         .status-signal-stable { background-color: #fbf8f6; color: #6e655f; border: 1px solid #d7cbc4; }
         .row-signal-changed { background: linear-gradient(90deg, rgba(253,241,239,0.95) 0%, rgba(255,255,255,1) 14%); }
-        
+
         /* INTERACTIVES */
         .copy-btn { opacity: 0.3; transition: all 0.15s; cursor: pointer; }
         .copy-btn:hover { opacity: 1; color: var(--oci-red); transform: scale(1.1); }
@@ -90,7 +90,7 @@
             color: #322d2a;
         }
         .highlight { background-color: #fef08a; color: #000; font-weight: 600; padding: 0 1px; }
-        
+
         /* MODALS & ANIMATION */
         .modal-overlay { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px); }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
@@ -106,7 +106,7 @@
             70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
-        
+
         .sort-indicator { margin-left: 4px; font-size: 10px; opacity: 0.3; }
         .sort-active { opacity: 1; color: var(--oci-red); font-weight: bold; }
         .refresh-log {
@@ -151,6 +151,12 @@
             background: #fff;
             color: var(--oci-steel);
             transition: all 0.15s ease;
+        }
+        a.portal-tab {
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
         }
         .portal-tab:hover {
             border-color: #efc6be;
@@ -880,14 +886,26 @@
                 </div>
                 <div>
                     <h1 class="text-2xl font-black tracking-tighter uppercase leading-none">OCI Tenancy Explorer</h1>
-                    <div class="flex items-center gap-2 mt-2">
-                        <div id="customer-breadcrumb" class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Tenancy-Wide Visibility And Operational Signals</div>
-                        <span class="text-slate-300 text-[8px]">●</span>
-                        <button onclick="App.toggleAbout(true)" class="text-[10px] font-black text-blue-600 uppercase hover:text-blue-800 tracking-widest transition-all">About</button>
+                    <div class="flex items-center gap-3 mt-3 flex-wrap">
+                        <div id="customer-breadcrumb" class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Tenancy-Wide Visibility And Operational Signals</div>
+                        <div class="flex items-center gap-1.5" id="header-nav-pills" onclick="event.stopPropagation()">
+                            <button id="nav-home-pill" onclick="sessionStorage.removeItem('__autoEnterFleet');window.location.href='./index.html'" class="text-[9px] font-black uppercase tracking-[0.1em] px-3 py-1 rounded-lg transition-all" style="background:#2563eb;color:#fff;border:1px solid #2563eb;cursor:pointer;box-shadow:0 2px 6px rgba(37,99,235,0.3)">Home</button>
+                            <span style="color:#94a3b8;font-size:9px">|</span>
+                            <button onclick="App.toggleAbout(true)" class="text-[9px] font-black uppercase tracking-[0.1em] px-3 py-1 rounded-lg transition-all" style="background:rgba(37,99,235,0.08);color:#2563eb;border:1px solid rgba(37,99,235,0.2);cursor:pointer" onmouseover="this.style.background='#2563eb';this.style.color='#fff';this.style.borderColor='#2563eb'" onmouseout="this.style.background='rgba(37,99,235,0.08)';this.style.color='#2563eb';this.style.borderColor='rgba(37,99,235,0.2)'">About</button>
+                            <span style="color:#94a3b8;font-size:9px">|</span>
+                            <button id="nav-fleet-pill" onclick="App.goToFleetView()" class="text-[9px] font-black uppercase tracking-[0.1em] px-3 py-1 rounded-lg transition-all" style="background:rgba(37,99,235,0.08);color:#2563eb;border:1px solid rgba(37,99,235,0.2);cursor:pointer" onmouseover="this.style.background='#2563eb';this.style.color='#fff';this.style.borderColor='#2563eb'" onmouseout="if(!this.dataset.active){this.style.background='rgba(37,99,235,0.08)';this.style.color='#2563eb';this.style.borderColor='rgba(37,99,235,0.2)'}">Fleet View</button>
+                            <span id="header-maintenance-group" class="contents">
+                            <span style="color:#94a3b8;font-size:9px">|</span>
+                            <a id="header-maintenance-link" href="./maintenance_center.html" class="text-[9px] font-black uppercase tracking-[0.1em] px-3 py-1 rounded-lg transition-all" style="background:rgba(199,70,52,0.08);color:#c74634;border:1px solid rgba(199,70,52,0.2);text-decoration:none" onmouseover="this.style.background='#c74634';this.style.color='#fff';this.style.borderColor='#c74634'" onmouseout="this.style.background='rgba(199,70,52,0.08)';this.style.color='#c74634';this.style.borderColor='rgba(199,70,52,0.2)'">Maintenance Center</a>
+                            <span style="color:#94a3b8;font-size:9px">|</span>
+                            <a id="header-actions-link" href="./maintenance_center.html#actions" class="text-[9px] font-black uppercase tracking-[0.1em] px-3 py-1 rounded-lg transition-all" style="background:rgba(199,70,52,0.08);color:#c74634;border:1px solid rgba(199,70,52,0.2);text-decoration:none" onmouseover="this.style.background='#c74634';this.style.color='#fff';this.style.borderColor='#c74634'" onmouseout="this.style.background='rgba(199,70,52,0.08)';this.style.color='#c74634';this.style.borderColor='rgba(199,70,52,0.2)'">Action Center</a>
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="flex gap-3">
+            <div class="flex gap-3 items-center">
+                <select id="header-customer-select" style="display:none;font-size:11px;font-weight:700;padding:6px 12px;border-radius:10px;border:1.5px solid #e7dfdb;background:#fff;cursor:pointer;color:#5f5956" onchange="App.handleTenancySelect(this.value)"></select>
                 <button id="back-to-home" class="hidden px-7 py-3.5 text-[10px] font-black uppercase tracking-widest text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">← Home</button>
             </div>
         </header>
@@ -918,6 +936,8 @@
                 <button id="portal-tab-shapes" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Shape Explorer</button>
                 <button id="portal-tab-opportunities" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Opportunities</button>
                 <button id="portal-tab-announcements" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Console Announcements</button>
+                <a id="portal-tab-maintenance" href="./maintenance_center.html" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Maintenance Center</a>
+                <a id="portal-tab-actions" href="./maintenance_center.html#actions" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Action Center</a>
             </div>
 
             <div id="portal-overview-view" class="hidden space-y-6">
@@ -1413,7 +1433,7 @@
         </div>
     </div>
 
-    <div id="about-modal" class="hidden fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-6">
+    <div id="about-modal" style="display:none" class="fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-[80vw] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade">
             <div class="bg-slate-900 p-10 text-white flex justify-between items-start">
                 <div>
@@ -1422,7 +1442,7 @@
                 </div>
                 <button onclick="App.toggleAbout(false)" class="text-4xl font-light hover:text-blue-400 transition-colors leading-none">&times;</button>
             </div>
-            
+
             <div class="p-12 overflow-y-auto custom-scrollbar text-sm text-slate-600 space-y-10 bg-white">
                 <section class="rounded-3xl border border-slate-200 bg-slate-50 p-8">
                     <div class="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-8 items-start">
@@ -1433,7 +1453,7 @@
                             <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div class="rounded-2xl border border-slate-200 bg-white p-4">
                                     <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">What It Surfaces</p>
-                                    <p id="about-what-it-surfaces" class="mt-2 text-[12px] leading-relaxed text-slate-600">Tenancy summary, fleet posture, shape inventory, opportunity signals, console announcements, and OCID-level drill-down details.</p>
+                                    <p id="about-what-it-surfaces" class="mt-2 text-[12px] leading-relaxed text-slate-600">Tenancy summary, fleet posture, shape inventory, opportunity signals, console announcements, OCID-level drill-down, maintenance command center with strategy engine and resiliency gap detection, and an action center for executing fault domain migrations.</p>
                                 </div>
                                 <div class="rounded-2xl border border-slate-200 bg-white p-4">
                                     <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">How It Stays Safe</p>
@@ -1449,6 +1469,8 @@
                                 <li>Use <code>Fleet View</code> to inspect individual assets, maintenance state, and change signals.</li>
                                 <li id="about-start-here-feature-step">Use <code>Shape Explorer</code>, <code>Opportunities</code>, and <code>Console Announcements</code> to guide deeper discussion.</li>
                                 <li>Click any OCID to open the <code>Asset Inspector</code> for direct resource drill-down and OCI Console handoff.</li>
+                                <li>Use <code>Maintenance Center</code> to review scheduled maintenance, resiliency gaps, and remediation strategies across all regions.</li>
+                                <li>Use <code>Action Center</code> to execute fault domain migrations for scheduled instances (SE mode required for live execution).</li>
                             </ol>
                         </div>
                     </div>
@@ -1488,12 +1510,26 @@
                             <p class="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Best For</p>
                             <p class="mt-2 text-[12px] leading-relaxed">Finding modernization, resilience, observability, security, or platform adoption opportunities to discuss with the customer.</p>
                         </div>
-                        <div id="about-card-announcements" class="rounded-2xl border border-slate-200 bg-white p-6 xl:col-span-2">
+                        <div id="about-card-announcements" class="rounded-2xl border border-slate-200 bg-white p-6">
                             <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Console Announcements</p>
                             <p class="mt-3 text-[13px] font-bold text-slate-800">Use this to review active notices before or during a customer meeting.</p>
                             <p class="mt-2 text-[12px] leading-relaxed">Pulls OCI Console Announcements into a local snapshot so banner messages, operational notices, and actionable service communications are easier to review in one place.</p>
                             <p class="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Best For</p>
                             <p class="mt-2 text-[12px] leading-relaxed">Weekly customer reviews, operational check-ins, and confirming whether current announcements require follow-up.</p>
+                        </div>
+                        <div id="about-card-maintenance" class="rounded-2xl border border-[#efc6be] bg-[#fff7f5] p-6">
+                            <p class="text-[10px] font-black uppercase tracking-widest" style="color:var(--oci-red)">Maintenance Center</p>
+                            <p class="mt-3 text-[13px] font-bold text-slate-800">Use this to manage the OCI hypervisor firmware maintenance campaign (Feb 25 - early May 2026).</p>
+                            <p class="mt-2 text-[12px] leading-relaxed">Discovers all scheduled instances across every subscribed region, classifies each into a remediation strategy (BM self-service, DenseIO NVMe backup, OKE drain/replace/node cycling, FD move, Stop/Start, over-provision), surfaces resiliency gaps with customer-safe and SE-detailed remediation, and provides a pre-maintenance checklist, timeline, and FD impact map. SE mode (hidden triple-tap toggle) reveals field intelligence codified from 30+ SE Slack conversations: what works, what doesn't, known bugs, internal validation tools, and per-instance strategy cards with countdowns.</p>
+                            <p class="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Best For</p>
+                            <p class="mt-2 text-[12px] leading-relaxed">Customer maintenance readiness reviews, pre-window preparation, identifying DenseIO/GPU/OKE/singleton risks, and exporting strategy-assigned CSV reports.</p>
+                        </div>
+                        <div id="about-card-actions" class="rounded-2xl border border-[#efc6be] bg-[#fff7f5] p-6">
+                            <p class="text-[10px] font-black uppercase tracking-widest" style="color:var(--oci-red)">Action Center</p>
+                            <p class="mt-3 text-[13px] font-bold text-slate-800">Use this to execute fault domain relocations for scheduled instances.</p>
+                            <p class="mt-2 text-[12px] leading-relaxed">Shows a migration plan for every eligible instance with auto-selected target fault domains. Default view is dry-run only (no changes made, read-only preview). Live execution mode enables per-instance fault domain relocations with real-time progress tracking and inline status messages.</p>
+                            <p class="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Best For</p>
+                            <p class="mt-2 text-[12px] leading-relaxed">Proactive FD migration during SE-led customer sessions, controlled batch remediation by region, and reducing the maintenance footprint ahead of scheduled windows.</p>
                         </div>
                     </div>
                 </section>
@@ -1563,11 +1599,15 @@
                             <div class="space-y-3 text-[12px] leading-relaxed">
                                 <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
                                     <p class="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2">Collector Model</p>
-                                    <p>The portal uses separate Python collectors for fleet, shapes, opportunities, and announcements. The browser renders their generated JSON snapshots.</p>
+                                    <p>The portal uses <code>build_fleet_data.py</code> to collect fleet snapshots including instance inventory, maintenance signals, availability domains, and fault domains across all subscribed regions. Additional collectors handle shapes, opportunities, and announcements when enabled. The browser renders the generated JSON snapshots.</p>
                                 </div>
                                 <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
                                     <p class="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2">OCI Data Sources</p>
-                                    <p>The app relies on direct OCI APIs including Identity, Compute, networking-related lookups for OCID drill-down, OS Management Hub where available, and other service-specific reads needed by each snapshot.</p>
+                                    <p>Identity (regions, compartments, fault domains), Compute (instances, maintenance events, instance actions), networking lookups for OCID drill-down, OS Management Hub where available, and Announcements (PLANNED_CHANGE for maintenance campaign tracking).</p>
+                                </div>
+                                <div class="p-4 rounded-xl border" style="background:#fff7f5;border-color:#efc6be">
+                                    <p class="font-black text-[10px] uppercase tracking-widest mb-2" style="color:var(--oci-red)">Maintenance + Action Center</p>
+                                    <p><code>maintenance_center.html</code> is a standalone React page (Babel standalone, no build step) that reads <code>fleet_data.json</code> and runs a client-side strategy engine classifying each scheduled instance into one of 7 remediation strategies. The Action Center calls <code>POST /api/maintenance/fd-move</code> on <code>portal_server.py</code>, which executes fault domain migrations via the OCI Compute API with maintenance event validation and safety guards for running instances.</p>
                                 </div>
                                 <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
                                     <p class="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2">Snapshot Host Pattern</p>
@@ -1606,7 +1646,7 @@
         </div>
     </div>
 
-    <div id="refresh-modal" class="hidden fixed inset-0 z-[110] modal-overlay flex items-center justify-center p-6">
+    <div id="refresh-modal" style="display:none" class="fixed inset-0 z-[110] modal-overlay flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-[90vw] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-fade">
             <div class="bg-slate-900 p-8 text-white flex justify-between items-start">
                 <div>
@@ -1682,7 +1722,7 @@
         </div>
     </div>
 
-    <div id="config-setup-modal" class="hidden fixed inset-0 z-[105] modal-overlay flex items-center justify-center p-6">
+    <div id="config-setup-modal" style="display:none" class="fixed inset-0 z-[105] modal-overlay flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade">
             <div class="bg-slate-900 p-8 text-white flex justify-between items-start">
                 <div>
@@ -1745,7 +1785,7 @@
         </div>
     </div>
 
-    <div id="principal-setup-modal" class="hidden fixed inset-0 z-[105] modal-overlay flex items-center justify-center p-6">
+    <div id="principal-setup-modal" style="display:none" class="fixed inset-0 z-[105] modal-overlay flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade">
             <div class="bg-slate-900 p-8 text-white flex justify-between items-start">
                 <div>
@@ -1821,7 +1861,7 @@
         </div>
     </div>
 
-    <div id="overview-detail-modal" class="hidden fixed inset-0 z-[111] modal-overlay flex items-center justify-center p-6">
+    <div id="overview-detail-modal" style="display:none" class="fixed inset-0 z-[111] modal-overlay flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade">
             <div class="bg-slate-900 p-8 text-white flex justify-between items-start">
                 <div>
@@ -1846,7 +1886,7 @@
         </div>
     </div>
 
-    <div id="console-handoff-modal" class="hidden fixed inset-0 z-[112] modal-overlay flex items-center justify-center p-6">
+    <div id="console-handoff-modal" style="display:none" class="fixed inset-0 z-[112] modal-overlay flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade">
             <div class="bg-slate-900 p-8 text-white flex justify-between items-start">
                 <div>
@@ -1885,6 +1925,9 @@
     <script>
         const LEGACY_DB_NAME = 'OCI_TENANCY_EXPLORER_ENTERPRISE_DB';
         const REFRESH_STATUS_POLL_MS = 1200;
+        const __CUSTOMER_PARAM = new URLSearchParams(window.location.search).get('customer') || '';
+        const __SAVED_CUSTOMER = sessionStorage.getItem('__activeCustomer') || '';
+        const __DATA_PREFIX = __CUSTOMER_PARAM ? './customers/' + encodeURIComponent(__CUSTOMER_PARAM) + '/' : './';
 
         const App = {
             currentCustomer: null, currentCustomerLabel: null, customers: [], allInstances: [], data: [], headers: [], filtered: [],
@@ -1939,6 +1982,7 @@
                         shapes: true,
                         opportunities: true,
                         announcements: true,
+                        maintenance: true,
                     }
                 };
             },
@@ -2030,6 +2074,7 @@
                         ...(this.isFeatureEnabled('opportunities') ? ['opportunity signals'] : []),
                         ...(this.isFeatureEnabled('announcements') ? ['console announcements'] : []),
                         'OCID-level drill-down details',
+                        ...(this.isFeatureEnabled('maintenance') ? ['maintenance command center with strategy engine and resiliency gap detection', 'action center for executing fault domain migrations'] : []),
                     ];
                     whatItSurfacesEl.textContent = `${this.formatLabelList(surfacedItems)}.`;
                 }
@@ -2051,6 +2096,8 @@
                 shapesCardEl?.classList.toggle('hidden', !this.isFeatureEnabled('shapes'));
                 opportunitiesCardEl?.classList.toggle('hidden', !this.isFeatureEnabled('opportunities'));
                 announcementsCardEl?.classList.toggle('hidden', !this.isFeatureEnabled('announcements'));
+                document.getElementById('about-card-maintenance')?.classList.toggle('hidden', !this.isFeatureEnabled('maintenance'));
+                document.getElementById('about-card-actions')?.classList.toggle('hidden', !this.isFeatureEnabled('maintenance'));
 
                 if (syncOrderEl) {
                     const syncFiles = this.getEnabledSyncModes().map(stepKey => ({
@@ -2084,12 +2131,22 @@
                 }
 
                 if (step4CardEl && step4TextEl) {
-                    if (this.isFeatureEnabled('announcements')) {
-                        step4CardEl.classList.remove('hidden');
-                        step4TextEl.innerHTML = 'Close with <code>Console Announcements</code> and any OCID drill-downs that need operational follow-up.';
+                    const hasAnnouncements = this.isFeatureEnabled('announcements');
+                    const hasMaintenance = this.isFeatureEnabled('maintenance');
+                    const closingItems = [];
+                    if (hasAnnouncements) closingItems.push('<code>Console Announcements</code>');
+                    if (hasMaintenance) closingItems.push('<code>Maintenance Center</code> for scheduled maintenance readiness and <code>Action Center</code> for FD migration execution');
+                    step4CardEl.classList.remove('hidden');
+                    if (closingItems.length) {
+                        step4TextEl.innerHTML = `Close with ${closingItems.join(', ')} and any OCID drill-downs that need operational follow-up.`;
                     } else {
-                        step4CardEl.classList.remove('hidden');
                         step4TextEl.innerHTML = 'Close with any OCID drill-downs and operational follow-up items that came out of the review.';
+                    }
+                    // Renumber: if step 3 is hidden, step 4 becomes step 3
+                    const step4Label = step4CardEl.querySelector('p:first-child');
+                    if (step4Label) {
+                        const step3Hidden = step3CardEl && step3CardEl.classList.contains('hidden');
+                        step4Label.textContent = step3Hidden ? 'Step 3' : 'Step 4';
                     }
                 }
             },
@@ -2099,6 +2156,9 @@
                 document.getElementById('portal-tab-shapes')?.classList.toggle('hidden', !this.isFeatureEnabled('shapes'));
                 document.getElementById('portal-tab-opportunities')?.classList.toggle('hidden', !this.isFeatureEnabled('opportunities'));
                 document.getElementById('portal-tab-announcements')?.classList.toggle('hidden', !this.isFeatureEnabled('announcements'));
+                document.getElementById('portal-tab-maintenance')?.classList.toggle('hidden', !this.isFeatureEnabled('maintenance'));
+                document.getElementById('portal-tab-actions')?.classList.toggle('hidden', !this.isFeatureEnabled('maintenance'));
+                document.getElementById('header-maintenance-group')?.classList.toggle('hidden', !this.isFeatureEnabled('maintenance'));
                 if (!this.getAvailablePortalViews().includes(this.currentPortalView)) {
                     this.currentPortalView = 'fleet';
                 }
@@ -2209,7 +2269,7 @@
 
             async checkExternalJSON() {
                 try {
-                    const res = await fetch('./fleet_data.json', { cache: 'no-store' });
+                    const res = await fetch(__DATA_PREFIX + 'fleet_data.json', { cache: 'no-store' });
                     if (!res.ok) return;
                     const json = await res.json();
                     if (json.customers && json.instances) {
@@ -2242,7 +2302,7 @@
 
             async checkOpportunitiesJSON() {
                 try {
-                    const res = await fetch('./fleet_data_opportunities.json', { cache: 'no-store' });
+                    const res = await fetch(__DATA_PREFIX + 'fleet_data_opportunities.json', { cache: 'no-store' });
                     if (!res.ok) return;
                     const json = await res.json();
                     if (json.analysis) {
@@ -2279,7 +2339,7 @@
 
             async checkShapesJSON() {
                 try {
-                    const res = await fetch('./fleet_data_shapes.json', { cache: 'no-store' });
+                    const res = await fetch(__DATA_PREFIX + 'fleet_data_shapes.json', { cache: 'no-store' });
                     if (!res.ok) return;
                     const json = await res.json();
                     if (Array.isArray(json.instances)) {
@@ -2313,7 +2373,7 @@
 
             async checkAnnouncementsJSON() {
                 try {
-                    const res = await fetch('./fleet_data_announcements.json', { cache: 'no-store' });
+                    const res = await fetch(__DATA_PREFIX + 'fleet_data_announcements.json', { cache: 'no-store' });
                     if (!res.ok) return;
                     const json = await res.json();
                     if (Array.isArray(json.announcements)) {
@@ -2643,7 +2703,7 @@
             },
 
             toggleRefreshModal(show) {
-                document.getElementById('refresh-modal').classList.toggle('hidden', !show);
+                var m=document.getElementById('refresh-modal'); if(m) m.style.display=show?'flex':'none';
                 if (show) {
                     document.getElementById('refresh-command-hint').textContent = this.getRefreshModeConfig().command;
                     this.fetchRefreshStatus();
@@ -3856,7 +3916,7 @@
             },
 
             toggleConsoleHandoffModal(show) {
-                document.getElementById('console-handoff-modal').classList.toggle('hidden', !show);
+                var m=document.getElementById('console-handoff-modal'); if(m) m.style.display=show?'flex':'none';
             },
 
             async copyConsoleHandoffCommand(event) {
@@ -5190,7 +5250,7 @@
             },
 
             toggleOverviewDetailModal(show) {
-                document.getElementById('overview-detail-modal').classList.toggle('hidden', !show);
+                var m=document.getElementById('overview-detail-modal'); if(m) m.style.display=show?'flex':'none';
                 if (!show) {
                     this.overviewDetailAction = null;
                 }
@@ -6337,15 +6397,18 @@
                 const container = document.getElementById('view-dashboard');
                 const customers = this.customers || [];
                 const allData = this.allInstances || [];
-                
-                container.innerHTML = (customers || []).map(c => {
+                const lastViewed = sessionStorage.getItem('__lastViewedTenancy') || (customers.length ? customers[0].name : '');
+
+                // Render local tenancy cards
+                let html = (customers || []).map(c => {
                     const d = allData.filter(x => x.customerId === c.name);
                     const comp = d.filter(x => x.reboot_status === 'Completed').length;
                     const sched = d.filter(x => x.reboot_status === 'Scheduled').length;
                     const changed = d.filter(x => (x.Status_Change_Signal || 'Stable') !== 'Stable').length;
                     const label = this.getCustomerLabel(c);
+                    const isLastViewed = c.name === lastViewed;
                     return `
-                    <div onclick="App.enterCustomer('${c.name}')" class="bg-white rounded-3xl border ${changed ? 'border-[#d97b6f] ring-4 ring-[#f8e3de]' : 'border-slate-200'} hover:border-[#c74634] cursor-pointer p-8 transition-all group shadow-sm hover:shadow-xl flex flex-col h-full">
+                    <div onclick="sessionStorage.removeItem('__activeCustomer');sessionStorage.setItem('__lastViewedTenancy','${c.name}');App.enterCustomer('${c.name}')" class="bg-white rounded-3xl border ${isLastViewed ? 'border-[#c74634] ring-4 ring-[#f8e3de]' : changed ? 'border-[#d97b6f] ring-4 ring-[#f8e3de]' : 'border-slate-200'} hover:border-[#c74634] cursor-pointer p-8 transition-all group shadow-sm hover:shadow-xl flex flex-col h-full">
                         <div class="flex items-start justify-between gap-4">
                             <h3 class="font-black text-slate-900 text-2xl group-hover:text-[#c74634] transition-colors">${label}</h3>
                         </div>
@@ -6359,6 +6422,32 @@
                         </div>
                     </div>`;
                 }).join('');
+
+                // Fetch imported customers and add cards
+                try {
+                    const res = await fetch('/api/customers');
+                    const data = await res.json();
+                    const imported = data.customers || [];
+                    if (imported.length) {
+                        html += imported.map(c => {
+                            const isLastViewed = c.name === lastViewed;
+                            return `
+                        <div onclick="sessionStorage.setItem('__lastViewedTenancy','${this.escapeHtml(c.name)}');window.location.href='./index.html?customer=${encodeURIComponent(c.name)}'" class="bg-white rounded-3xl border ${isLastViewed ? 'border-[#2563eb] ring-4 ring-blue-100' : 'border-blue-200'} hover:border-[#2563eb] cursor-pointer p-8 transition-all group shadow-sm hover:shadow-xl flex flex-col h-full" style="background:linear-gradient(135deg,#fafcff,#f0f7ff)">
+                            <div class="flex items-start justify-between gap-4">
+                                <h3 class="font-black text-slate-900 text-2xl group-hover:text-[#2563eb] transition-colors">${this.escapeHtml(c.name)}</h3>
+                                <span class="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-blue-600">Imported</span>
+                            </div>
+                            <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest mt-2">Imported · ${this.formatCount(c.instanceCount || 0)} instances</p>
+                            <div class="grid grid-cols-2 gap-3 mt-8">
+                                <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 text-blue-700 font-black text-center"><p class="text-[8px] uppercase opacity-60 mb-1">Fleet</p>${this.formatCount(c.instanceCount || 0)}</div>
+                                <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 text-blue-700 font-black text-center"><p class="text-[8px] uppercase opacity-60 mb-1">Files</p>${[c.hasFleet,c.hasShapes,c.hasOpportunities,c.hasAnnouncements].filter(Boolean).length}/4</div>
+                            </div>
+                        </div>`;
+                        }).join('');
+                    }
+                } catch(e) {}
+
+                container.innerHTML = html;
                 if (!container.innerHTML) {
                     container.innerHTML = `
                     <div class="col-span-full bg-white rounded-3xl border border-slate-200 p-10 text-center shadow-sm">
@@ -6424,13 +6513,64 @@
                 document.getElementById('view-portal').classList.remove('hidden');
                 document.getElementById('back-to-home').classList.remove('hidden');
                 document.getElementById('active-customer-name').textContent = this.currentCustomerLabel || name;
+                this.updateFleetPill(true);
+                var sel = document.getElementById('header-customer-select');
+                if (sel) { var ac = sessionStorage.getItem('__activeCustomer'); sel.value = ac || '__home__'; sel.style.color = ac ? '#2563eb' : '#5f5956'; }
                 this.loadCustomerData();
                 this.setPortalView(this.currentPortalView);
             },
 
+            handleTenancySelect(value) {
+                if (value === '__home__') {
+                    sessionStorage.removeItem('__activeCustomer');
+                    sessionStorage.removeItem('__lastViewedTenancy');
+                    sessionStorage.removeItem('__autoEnterFleet');
+                    window.location.href = './index.html';
+                } else if (value) {
+                    sessionStorage.setItem('__activeCustomer', value);
+                    sessionStorage.setItem('__lastViewedTenancy', value);
+                    window.location.href = './index.html?customer=' + encodeURIComponent(value);
+                }
+            },
+            updateFleetPill(active) {
+                var pill = document.getElementById('nav-fleet-pill');
+                var homePill = document.getElementById('nav-home-pill');
+                if (pill) {
+                    if (active) {
+                        pill.style.background = '#2563eb'; pill.style.color = '#fff'; pill.style.borderColor = '#2563eb'; pill.style.boxShadow = '0 2px 6px rgba(37,99,235,0.3)'; pill.dataset.active = '1';
+                    } else {
+                        pill.style.background = 'rgba(37,99,235,0.08)'; pill.style.color = '#2563eb'; pill.style.borderColor = 'rgba(37,99,235,0.2)'; pill.style.boxShadow = 'none'; delete pill.dataset.active;
+                    }
+                }
+                if (homePill) {
+                    if (active) {
+                        homePill.style.background = 'rgba(37,99,235,0.08)'; homePill.style.color = '#2563eb'; homePill.style.borderColor = 'rgba(37,99,235,0.2)'; homePill.style.boxShadow = 'none';
+                    } else {
+                        homePill.style.background = '#2563eb'; homePill.style.color = '#fff'; homePill.style.borderColor = '#2563eb'; homePill.style.boxShadow = '0 2px 6px rgba(37,99,235,0.3)';
+                    }
+                }
+            },
+            goToFleetView() {
+                if (this.currentCustomer) {
+                    this.setPortalView('fleet');
+                    return;
+                }
+                var active = sessionStorage.getItem('__activeCustomer') || '';
+                if (active) {
+                    window.location.href = './index.html?customer=' + encodeURIComponent(active);
+                } else if (this.customers && this.customers.length > 0) {
+                    this.enterCustomer(this.customers[0].name);
+                    this.setPortalView('fleet');
+                } else {
+                    sessionStorage.setItem('__autoEnterFleet', '1');
+                    window.location.href = './index.html';
+                }
+            },
             exitToDashboard() {
+                sessionStorage.setItem('__lastViewedTenancy', this.currentCustomer || '');
                 this.currentCustomer = null;
                 this.currentCustomerLabel = null;
+                this.updateFleetPill(false);
                 document.getElementById('view-dashboard').classList.remove('hidden');
                 document.getElementById('view-portal').classList.add('hidden');
                 document.getElementById('back-to-home').classList.add('hidden');
@@ -6558,7 +6698,7 @@
                 const pageStartIndex = (this.pagination.page - 1) * this.pagination.pageSize;
                 const pageRows = this.filtered.slice(pageStartIndex, pageStartIndex + this.pagination.pageSize);
                 this.updatePaginationControls(pageRows);
-                
+
                 document.getElementById('stat-completed').textContent = this.formatCount(this.filtered.filter(d => d.reboot_status === 'Completed').length);
                 document.getElementById('stat-scheduled').textContent = this.formatCount(this.filtered.filter(d => d.reboot_status === 'Scheduled').length);
                 document.getElementById('stat-not-scheduled').textContent = this.formatCount(this.filtered.filter(d => d.reboot_status === 'Not Scheduled').length);
@@ -6603,10 +6743,10 @@
                 this.setInspectorState(this.buildRowInspectorState(r));
             },
 
-            toggleAbout(show) { document.getElementById('about-modal').classList.toggle('hidden', !show); },
+            toggleAbout(show) { var m=document.getElementById('about-modal'); if(m){m.style.display=show?'flex':'none';} },
             toggleSetupModal(type, show) {
                 const modalId = type === 'principal' ? 'principal-setup-modal' : 'config-setup-modal';
-                document.getElementById(modalId).classList.toggle('hidden', !show);
+                var m=document.getElementById(modalId); if(m) m.style.display=show?'flex':'none';
             },
             copyFromButton(button, e) {
                 const text = button?.getAttribute('data-copy') || '';
@@ -6616,7 +6756,7 @@
                 if (e) e.stopPropagation();
                 navigator.clipboard.writeText(text);
                 const btn = sourceButton || e?.currentTarget;
-                if (btn) { 
+                if (btn) {
                     const old = btn.innerHTML;
                     btn.innerHTML = `
                         <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -6626,8 +6766,81 @@
                 }
             }
         };
-        
+
         App.init();
+        if(window.location.hash==="#about"){App.toggleAbout(true);history.replaceState(null,"","#");}
+
+        // ── Populate header customer dropdown (always, on every page load) ──
+        fetch('/api/customers').then(function(r) { return r.json(); }).then(function(data) {
+            var sel = document.getElementById('header-customer-select');
+            var activeFor = __CUSTOMER_PARAM || __SAVED_CUSTOMER || sessionStorage.getItem('__lastViewedTenancy') || '';
+            if (sel && data.customers && data.customers.length > 0) {
+                sel.style.display = '';
+                sel.innerHTML = '<option value="__home__">My Tenancy (Live)</option>';
+                data.customers.forEach(function(c) {
+                    var opt = document.createElement('option');
+                    opt.value = c.name;
+                    opt.textContent = c.name + ' (' + (c.instanceCount || 0) + ')';
+                    sel.appendChild(opt);
+                });
+                if (activeFor && data.customers.some(function(c) { return c.name === activeFor; })) {
+                    sel.value = activeFor;
+                    sel.style.color = '#2563eb';
+                } else {
+                    sel.value = '__home__';
+                    sel.style.color = '#5f5956';
+                }
+            }
+        }).catch(function() {});
+
+        // ── Imported customer viewing mode ──
+        if (__CUSTOMER_PARAM) {
+            // Persist selection
+            sessionStorage.setItem('__activeCustomer', __CUSTOMER_PARAM);
+
+            // Override "← Home" to go to dashboard (keeps customer in dropdown)
+            App.exitToDashboard = function() { sessionStorage.setItem('__lastViewedTenancy',__CUSTOMER_PARAM||'');sessionStorage.removeItem('__autoEnterFleet');window.location.href = './index.html'; };
+            document.getElementById('back-to-home').onclick = () => App.exitToDashboard();
+
+            // Update MC/AC links to carry customer context
+            document.querySelectorAll('a[href*="maintenance_center.html"]').forEach(a => {
+                var url = new URL(a.href, window.location.origin);
+                url.searchParams.set('customer', __CUSTOMER_PARAM);
+                a.href = url.toString();
+            });
+
+            // Wait for data to load, then enter Fleet View
+            (function waitAndEnter() {
+                if (App.customers && App.customers.length > 0) {
+                    App.enterCustomer(App.customers[0].name);
+                    App.currentCustomerLabel = __CUSTOMER_PARAM;
+                    var nameEl = document.getElementById('active-customer-name');
+                    if (nameEl) nameEl.textContent = __CUSTOMER_PARAM;
+                    var subtitle = document.querySelector('#portal-masthead p');
+                    if (subtitle) { subtitle.textContent = 'Imported · Read-only'; subtitle.style.color = '#2563eb'; }
+                    // Disable sync/refresh by ID (read-only)
+                    ['sync-data-btn','header-refresh-action'].forEach(function(id) {
+                        var btn = document.getElementById(id);
+                        if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; btn.title = 'Read-only: viewing imported data'; }
+                    });
+                    App.render();
+                } else {
+                    setTimeout(waitAndEnter, 200);
+                }
+            })();
+        }
+
+        // ── Auto-enter Fleet View for own tenancy (when switching from dropdown) ──
+        if (!__CUSTOMER_PARAM && sessionStorage.getItem('__autoEnterFleet')) {
+            sessionStorage.removeItem('__autoEnterFleet');
+            (function waitAndEnterOwn() {
+                if (App.customers && App.customers.length > 0) {
+                    App.enterCustomer(App.customers[0].name);
+                } else {
+                    setTimeout(waitAndEnterOwn, 200);
+                }
+            })();
+        }
     </script>
 </body>
 </html>

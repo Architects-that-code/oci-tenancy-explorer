@@ -3,6 +3,7 @@
     "overview": false,
     "shapes": false,
     "opportunities": false,
-    "announcements": false
+    "announcements": false,
+    "maintenance": true
   }
 }

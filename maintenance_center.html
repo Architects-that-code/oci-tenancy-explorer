@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Maintenance Center | OCI Tenancy Explorer</title>
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+html{font-family:"Oracle Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;font-variant-numeric:tabular-nums;font-size:14px}
+body{background:radial-gradient(circle at top right,rgba(199,70,52,0.08),transparent 22%),linear-gradient(180deg,#fbf9f8,#f7f4f2);color:#1f1b1a;margin:0;padding:0}
+#mc-boot{text-align:center;padding:80px 20px;font-size:14px;color:#5f5956}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(199,70,52,0.4)}70%{box-shadow:0 0 0 8px rgba(199,70,52,0)}100%{box-shadow:0 0 0 0 rgba(199,70,52,0)}}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.mc-row:hover{background:#fef3c7 !important}
+.mc-row-sel:hover{background:#dbeafe !important}
+</style>
+</head>
+<body>
+<div id="root"><div id="mc-boot" style="text-align:center;padding:60px 20px;font-family:'Oracle Sans',sans-serif;color:#5f5956">
+  <div style="width:6px;height:28px;border-radius:3px;background:#c74634;margin:0 auto 12px"></div>
+  <div id="mc-boot-title" style="font-size:18px;font-weight:800;color:#1f1b1a;margin-bottom:4px">Maintenance Center</div>
+  <div id="mc-boot-status" style="font-size:12px;margin-bottom:16px">Connecting to OCI...</div>
+  <div id="mc-boot-regions" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:600px;margin:0 auto"></div>
+  <div id="mc-boot-log" style="font-size:10px;color:#8a7f79;margin-top:12px"></div>
+</div></div>
+<script>if(window.location.hash==="#actions"){var t=document.getElementById("mc-boot-title");if(t)t.textContent="Action Center";}</script>
+<script type="text/babel">
+const { useState, useMemo, useCallback } = React;
+
+// ─── Utils ───
+const isDense = (s) => /DenseIO/i.test(s||"");
+const isBM = (s) => /^BM\./i.test(s||"");
+const isGPU = (s) => /GPU/i.test(s||"");
+const isARM = (s) => /\.A1\.|\.A2\./i.test(s||"");
+const isOKE = (i) => { const n=(i.Display_Name||"").toLowerCase(); const t={...(i.freeformTags||{})}; return n.includes("oke-")||n.includes("np-pool")||Object.keys(t).some(k=>k.toLowerCase().includes("oke")); };
+const shortAD = (a) => { const p=(a||"").split(":"); return p.length>1?p[1]:a; };
+const shortFD = (f) => (f||"").replace("FAULT-DOMAIN-","FD-");
+const pD = (u) => { if(!u) return null; try{return new Date(u.replace(" ","T")+"Z");}catch{return null;} };
+const fD = (d) => d?d.toLocaleDateString("en-US",{month:"short",day:"numeric"}):"—";
+const fT = (d) => d?d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"UTC"})+" UTC":"";
+const fDT = (d) => d?`${fD(d)} ${fT(d)}`:"—";
+const isSingleton = (inst, all) => { const peers = all.filter(i=>i.Compartment_Name===inst.Compartment_Name && i.Region===inst.Region && i.ID!==inst.ID); return peers.length===0; };
+
+// ─── Strategy Engine ───
+function classifyStrategy(inst, allInstances) {
+  const dense = isDense(inst.Shape), bm = isBM(inst.Shape), gpu = isGPU(inst.Shape), oke = isOKE(inst), singleton = isSingleton(inst, allInstances);
+  const peers = allInstances.filter(i=>i.Compartment_Name===inst.Compartment_Name && i.Region===inst.Region && i.ID!==inst.ID);
+  const hasPeersInOtherFDs = peers.some(p=>p.Fault_Domain!==inst.Fault_Domain);
+  // Bare Metal — customer controls timing, self-service update
+  if (bm) return { id:"bm_self_service", label:"Bare Metal — Self-Service Update", color:"#0891b2", icon:"🔧", risk:"low", summary:"Bare Metal instances are self-service. The customer executes the firmware update at whatever time they choose. No Oracle-initiated reboot.", actions:["Schedule a maintenance window at your convenience","Execute the firmware update via Console or CLI","Instance reboots with updated firmware","No OOC risk — instance stays on dedicated hardware"], selfService:true, costImpact:"none" };
+  // DenseIO — NVMe at risk, no Stop/Start
+  if (dense) return { id:"wait_backup", label:"Wait + NVMe Backup", color:"#dc2626", icon:"🛡", risk:"low", summary:"Back up NVMe data before the window. Accept the ~20 min reboot. Stop/Start destroys NVMe data.", actions:["Back up all local NVMe data","Validate backup integrity","Accept the scheduled maintenance window","Verify NVMe data after reboot"], selfService:false, costImpact:"none" };
+  // OKE
+  if (oke) return { id:"oke_drain_replace", label:"OKE: Drain or Kill/Replace", color:"#7c3aed", icon:"⎈", risk:"low", summary:"Cordon + drain before window (zero-downtime). Or terminate node and let autoscaler provision a replacement on a clean host. Or use Node Cycling with maxSurge.", actions:["Option A: Cordon → Drain → Wait for maintenance → Uncordon","Option B: Cordon → Drain → Terminate node → Autoscaler provisions replacement on clean host","Option C: Node Cycling — set maximumSurge, trigger Cycle Nodes in Console","Replacement node lands on patched or not-yet-scheduled host (scheduled hosts are closed for placement)"], selfService:true, costImpact:"Option B/C may cause brief over-provisioning during ramp" };
+  // GPU — NEVER use Stop/Start, extreme OOC risk
+  if (gpu && singleton) return { id:"overprovision_then_move", label:"Over-Provision → Move (GPU)", color:"#b45309", icon:"📦", risk:"high", summary:"GPU singleton. Stop/Start carries extreme OOC risk for GPU shapes — do NOT attempt. Provision a replacement first, validate, cut traffic.", actions:["Provision a replacement GPU instance in a different FD","Configure and validate the replacement","Cut traffic to the replacement","Let original take the maintenance reboot, or terminate it","⚠ GPU shapes have extreme OOC risk — do NOT use Stop/Start","⚠ Additional cost during overlap period"], selfService:true, costImpact:"temporary duplicate instance cost" };
+  if (gpu && !singleton && hasPeersInOtherFDs) return { id:"fd_move_buffer", label:"FD Move (GPU — 10-Day Buffer)", color:"#2563eb", icon:"↗", risk:"medium", summary:"Move GPU to a different FD. Stop/Start carries extreme OOC risk for GPU shapes. FD Move is the safer self-service option.", actions:["Edit instance → change Fault Domain","Instance reboots onto a new host in the target FD","Maintenance event clears (may show PROCESSING briefly — known bug, clears to CANCELED)","⚠ Do NOT use Stop/Start for GPU shapes — extreme OOC capacity risk","⚠ New host may receive future maintenance notification"], selfService:true, costImpact:"none" };
+  if (gpu) return { id:"overprovision_then_move", label:"Over-Provision → Move (GPU)", color:"#b45309", icon:"📦", risk:"high", summary:"GPU instance with peers but same FD. Stop/Start carries extreme OOC risk for GPU shapes. Provision a replacement first.", actions:["Provision a replacement GPU instance in a different FD","Configure and validate the replacement","Cut traffic to the replacement","Let original take the maintenance reboot, or terminate it","⚠ GPU shapes have extreme OOC risk — do NOT use Stop/Start"], selfService:true, costImpact:"temporary duplicate instance cost" };
+  // Standard shapes
+  if (!singleton && hasPeersInOtherFDs) return { id:"fd_move_buffer", label:"FD Move (10-Day Buffer)", color:"#2563eb", icon:"↗", risk:"medium", summary:"Move to a different FD to get a new ~10-day notification window. Workload has peers in other FDs, so availability is maintained during the move.", actions:["Edit instance → change Fault Domain","Instance reboots onto a new host in the target FD","Maintenance event clears (may show PROCESSING briefly — known bug, clears to CANCELED)","New host may receive its own maintenance notification in a future wave","⚠ OOC Risk: if no capacity in target FD/shape, instance cannot start"], selfService:true, costImpact:"none" };
+  if (!singleton) return { id:"stop_start", label:"Stop/Start (~10-Day Buffer)", color:"#d97706", icon:"⟳", risk:"medium", summary:"Stop then Start to move to a new host on your schedule. New host gets a fresh ~10-day notification window if it needs future maintenance. Peers exist for availability, but monitor capacity.", actions:["Validate workload can tolerate a restart","Stop instance (Console or CLI)","Start instance — lands on new host with fresh ~10-day notification window","Verify maintenance event cleared (may show PROCESSING briefly — known bug)","⚠ OOC Risk: original host is closed; if no capacity, instance is stranded","⚠ Do NOT use Force Reboot — stays on same host"], selfService:true, costImpact:"none" };
+  return { id:"overprovision_then_move", label:"Over-Provision → Move", color:"#b45309", icon:"📦", risk:"high", summary:"This is a singleton instance with no peers. Provision a replacement first, validate it, then decommission the original or let it take the maintenance hit.", actions:["Provision a new instance in a different FD (or same FD if post-maintenance)","Configure and validate the replacement","Cut traffic to the replacement (DNS, LB, etc.)","Let original instance take the maintenance reboot, or terminate it","⚠ Additional cost during overlap period","⚠ OOC Risk if provisioning in a constrained FD/shape"], selfService:true, costImpact:"temporary duplicate instance cost" };
+}
+
+// ─── Analysis ───
+function analyzeFleet(data) {
+  const instances = data.instances||[];
+  const scheduled = instances.filter(i=>i.reboot_status==="Scheduled");
+  const completed = instances.filter(i=>i.reboot_status==="Completed");
+  const notSched = instances.filter(i=>i.reboot_status==="Not Scheduled");
+  const denseSched = scheduled.filter(i=>isDense(i.Shape));
+  const okeSched = scheduled.filter(i=>isOKE(i));
+  const changed = instances.filter(i=>i.Status_Change_Signal&&!["Stable","","-"].includes(i.Status_Change_Signal));
+
+  // Heatmap
+  const heatmap = {};
+  instances.forEach(inst => {
+    const r=inst.Region||"?",ad=shortAD(inst.Availability_Domain),fd=shortFD(inst.Fault_Domain);
+    if(!heatmap[r])heatmap[r]={};if(!heatmap[r][ad])heatmap[r][ad]={};if(!heatmap[r][ad][fd])heatmap[r][ad][fd]={scheduled:0,notScheduled:0,completed:0,instances:[],dates:[]};
+    const c=heatmap[r][ad][fd]; c.instances.push(inst);
+    if(inst.reboot_status==="Scheduled"){c.scheduled++;const d=pD(inst.Maintenance_UTC);if(d)c.dates.push(d);} else if(inst.reboot_status==="Completed")c.completed++; else c.notScheduled++;
+  });
+
+  // Gaps
+  const gaps = [];
+  // DR overlap
+  const schedRegions = [...new Set(scheduled.map(i=>i.Region))];
+  if(schedRegions.length>1) {
+    const overlaps = [];
+    for(let a=0;a<schedRegions.length;a++) for(let b=a+1;b<schedRegions.length;b++) overlaps.push([schedRegions[a],schedRegions[b]]);
+    overlaps.forEach(([ra,rb])=>{
+      const aCount=scheduled.filter(i=>i.Region===ra).length, bCount=scheduled.filter(i=>i.Region===rb).length;
+      gaps.push({type:"dr_overlap",severity:"critical",title:`Primary + DR regions both have scheduled maintenance`,detail:`${ra} has ${aCount} scheduled and ${rb} has ${bCount} scheduled. Multiple regions are patched simultaneously — only FDs within the same AD are sequential. Failing over to a DR region does NOT guarantee avoidance of maintenance. Plan for both regions being affected.`,instances:scheduled.filter(i=>i.Region===ra||i.Region===rb)});
+    });
+  }
+  // Single-FD concentration
+  const compFDs={};
+  instances.forEach(i=>{const k=`${i.Region}|${i.Compartment_Name}`;if(!compFDs[k])compFDs[k]=new Set();compFDs[k].add(i.Fault_Domain);});
+  Object.entries(compFDs).forEach(([k,fds])=>{if(fds.size===1){const[r,c]=k.split("|");const af=instances.filter(i=>i.Region===r&&i.Compartment_Name===c);if(af.length>1)gaps.push({type:"single_fd",severity:"high",title:`All ${af.length} instances in "${c}" (${r}) share ${shortFD([...fds][0])}`,detail:"Entire workload group affected simultaneously during FD maintenance. Distribute across 2+ fault domains.",instances:af});}});
+  // DenseIO
+  denseSched.forEach(i=>{gaps.push({type:"dense_nvme",severity:"critical",title:`DenseIO "${i.Display_Name}" — NVMe backup required`,detail:`${i.Shape} has local NVMe. Back up before ${fDT(pD(i.Maintenance_UTC))}. Do NOT use Stop/Start — stopping destroys NVMe data.`,instances:[i]});});
+  // OKE
+  if(okeSched.length>0) gaps.push({type:"oke",severity:"high",title:`${okeSched.length} OKE node(s) need drain or kill/replace`,detail:"Cordon and drain (or terminate and let autoscaler replace, or use Node Cycling with maxSurge) before the window. See OKE Playbook tab.",instances:okeSched});
+  // GPU
+  const gpuSched=scheduled.filter(i=>isGPU(i.Shape));
+  if(gpuSched.length>0) gaps.push({type:"gpu_ooc",severity:"critical",title:`${gpuSched.length} GPU instance(s) scheduled — extreme OOC risk if Stop/Start is attempted`,detail:"GPU shapes have very limited capacity. Do NOT use Stop/Start. Use FD Move if peers exist in other FDs, otherwise Over-Provision a replacement first.",instances:gpuSched});
+  // ARM (A1/A2)
+  const armSched=scheduled.filter(i=>isARM(i.Shape));
+  if(armSched.length>0) gaps.push({type:"arm_capacity",severity:"high",title:`${armSched.length} ARM-based instance(s) (A1/A2) scheduled — constrained capacity for FD moves`,detail:"A1 and A2 shapes have limited host capacity. FD moves and Stop/Start may fail with OUT_OF_HOST_CAPACITY even when capacity reports show AVAILABLE. Check capacity per FD before attempting moves. Try different ADs or off-peak hours if blocked.",instances:armSched});
+  // BM
+  const bmSched=scheduled.filter(i=>isBM(i.Shape));
+  if(bmSched.length>0) gaps.push({type:"bm_info",severity:"medium",title:`${bmSched.length} Bare Metal instance(s) — self-service firmware update`,detail:"Bare Metal customers control their own update timing. No Oracle-initiated reboot. Execute the update at a convenient maintenance window.",instances:bmSched});
+  // Maintenance pending — always flag when instances are scheduled
+  if(scheduled.length>0) {
+    const earliest=scheduled.map(i=>pD(i.Maintenance_UTC)).filter(Boolean).sort((a,b)=>a-b)[0];
+    const latest=scheduled.map(i=>pD(i.Maintenance_UTC)).filter(Boolean).sort((a,b)=>b-a)[0];
+    const windowStr=earliest&&latest&&earliest.getTime()!==latest.getTime()?`${fDT(earliest)} through ${fDT(latest)}`:earliest?fDT(earliest):"TBD";
+    gaps.push({type:"maintenance_pending",severity:"high",title:`${scheduled.length} instance${scheduled.length!==1?"s":""} scheduled for firmware maintenance`,detail:`Maintenance window: ${windowStr}. During each window, the instance is powered off for approximately 20 minutes while the hypervisor firmware is updated. The instance restarts automatically on the same host. No live migration is available for this maintenance type.`,instances:scheduled});
+    // Check if any scheduled instances lack peers (singletons with no HA)
+    const schedSingletons=scheduled.filter(i=>isSingleton(i,instances)&&!isDense(i.Shape)&&!isOKE(i)&&!isBM(i.Shape)&&!isGPU(i.Shape));
+    if(schedSingletons.length>0) gaps.push({type:"singleton_risk",severity:"high",title:`${schedSingletons.length} scheduled instance${schedSingletons.length!==1?"s are":" is"} a singleton with no peers`,detail:"These instances have no peers in the same compartment and region. During the ~20 minute maintenance window, the workload will be completely unavailable. Consider pre-staging a replacement instance if downtime is not acceptable.",instances:schedSingletons});
+    // Check for instances with signal changes
+    const schedChanged=scheduled.filter(i=>i.Status_Change_Signal&&!["Stable","","-"].includes(i.Status_Change_Signal));
+    if(schedChanged.length>0) gaps.push({type:"signal_change",severity:"medium",title:`${schedChanged.length} scheduled instance${schedChanged.length!==1?"s have":" has"} a recent status change signal`,detail:"These instances had their maintenance status change since the last snapshot. Review the signal to determine if the window was rescheduled, updated, or newly assigned.",instances:schedChanged});
+  }
+
+  // Strategies
+  const strategies = scheduled.map(i=>({...i,strategy:classifyStrategy(i,instances),_date:pD(i.Maintenance_UTC)}));
+  strategies.sort((a,b)=>(a._date||0)-(b._date||0));
+
+  const timeline = strategies.filter(i=>i._date);
+  const timelineRange = timeline.length?{min:timeline[0]._date,max:timeline[timeline.length-1]._date}:null;
+
+  // Cost model
+  const stratCounts = {};
+  strategies.forEach(s=>{stratCounts[s.strategy.id]=(stratCounts[s.strategy.id]||0)+1;});
+
+  return {instances,scheduled,completed,notSched,denseSched,okeSched,changed,heatmap,gaps,strategies,timeline,timelineRange,stratCounts,subscribedRegions:(data.source||{}).regions||[],tenancyName:(data.customers||[])[0]?.name||"Tenancy",generatedAt:data.generatedAt||"",regionDetails:data.regionDetails||{}};
+}
+
+// ─── Shared ───
+const S={
+  card:{background:"#fff",border:"1px solid #e7dfdb",borderRadius:14,padding:"18px 20px",minWidth:140,flex:"1 1 155px"},
+  cL:{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#8a7f79",marginBottom:5},
+  cV:(c)=>({fontSize:28,fontWeight:800,color:c||"#1f1b1a",lineHeight:1.1}),
+  cS:{fontSize:10,color:"#8a7f79",marginTop:3},
+  h2:{fontSize:15,fontWeight:800,margin:"0 0 4px 0",color:"#1f1b1a"},
+  desc:{fontSize:12,color:"#8a7f79",margin:"0 0 16px 0",lineHeight:1.6},
+  panel:{background:"#fff",border:"1px solid #e7dfdb",borderRadius:16,padding:"24px",minHeight:300},
+};
+function Badge({status,children}){const C={scheduled:{bg:"#fef3c7",b:"#f59e0b",t:"#92400e",d:"#f59e0b"},completed:{bg:"#dcfce7",b:"#22c55e",t:"#166534",d:"#22c55e"},notScheduled:{bg:"#f1f5f9",b:"#cbd5e1",t:"#475569",d:"#94a3b8"}};const c=C[status]||C.notScheduled;return (<span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 9px",borderRadius:7,fontSize:10,fontWeight:700,background:c.bg,color:c.t,border:`1px solid ${c.b}`}}><span style={{width:5,height:5,borderRadius:"50%",background:c.d}}/>{children}</span>);}
+function Sev({s}){const m={critical:{bg:"#fef2f2",b:"#fca5a5",c:"#991b1b",l:"CRITICAL"},high:{bg:"#fef3c7",b:"#fcd34d",c:"#92400e",l:"HIGH"},medium:{bg:"#eff6ff",b:"#93c5fd",c:"#1e40af",l:"MEDIUM"}};const c=m[s]||m.medium;return (<span style={{padding:"2px 7px",borderRadius:5,fontSize:9,fontWeight:800,letterSpacing:"0.06em",background:c.bg,color:c.c,border:`1px solid ${c.b}`}}>{c.l}</span>);}
+function Chip({n}){return (<span style={{fontSize:10,padding:"2px 6px",borderRadius:5,background:"#f3f2f0",border:"1px solid #d6d2cd",color:"#5d5753",fontWeight:600}}>{n}</span>);}
+function Step({n,title,cmd,note,color}){return (<div style={{display:"flex",gap:12,padding:"10px 0"}}><div style={{width:26,height:26,borderRadius:"50%",background:color||"#c74634",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:11,flexShrink:0}}>{n}</div><div style={{flex:1}}><div style={{fontWeight:700,fontSize:12,color:"#1f1b1a",marginBottom:2}}>{title}</div>{cmd&&<code style={{display:"block",background:"#1b1715",color:"#f7f4f2",padding:"5px 9px",borderRadius:5,fontSize:10,fontFamily:"SFMono-Regular,Consolas,monospace",marginBottom:3,overflowX:"auto"}}>{cmd}</code>}<div style={{fontSize:11,color:"#6b6560",lineHeight:1.5}}>{note}</div></div></div>);}
+
+// ─── Tab: Strategy Picker ───
+function TabStrategy({strategies}){
+  const groups = {};
+  strategies.forEach(s=>{if(!groups[s.strategy.id])groups[s.strategy.id]={strategy:s.strategy,instances:[]};groups[s.strategy.id].instances.push(s);});
+  const order = ["bm_self_service","wait_backup","oke_drain_replace","fd_move_buffer","stop_start","overprovision_then_move"];
+  const sorted = order.filter(id=>groups[id]).map(id=>groups[id]);
+  const now=Date.now();
+  function cdStr(d){if(!d)return"";const ms=d.getTime()-now;if(ms<0)return"Window passed";const dd=Math.floor(ms/864e5),hh=Math.floor((ms%864e5)/36e5);return dd>0?dd+"d "+hh+"h remaining":hh+"h remaining";}
+  return(
+    <div>
+      <h2 style={S.h2}>Remediation Strategy Picker</h2>
+      <p style={S.desc}>Each scheduled instance is classified into a recommended action based on its shape, workload type, fault domain placement, and peer topology. Expand each strategy group to see per-instance detail with maintenance windows and countdown timers.</p>
+
+      {/* Summary bar */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+        {sorted.map(({strategy:st,instances:insts})=>(
+          <div key={st.id} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:10,background:st.color+"0a",border:`1.5px solid ${st.color}22`}}>
+            <span style={{fontSize:18}}>{st.icon}</span>
+            <span style={{fontSize:24,fontWeight:800,color:st.color}}>{insts.length}</span>
+            <span style={{fontSize:11,fontWeight:700,color:st.color}}>{st.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Self-service reference */}
+      <div style={{background:"#f8f6f4",borderRadius:12,padding:"16px 18px",marginBottom:20}}>
+        <div style={{fontWeight:800,fontSize:12,marginBottom:10,color:"#1f1b1a"}}>Field Intelligence Reference <span style={{fontSize:9,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"2px 6px",borderRadius:4,marginLeft:6}}>SE-ONLY</span></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <div>
+            <div style={{fontSize:10,fontWeight:800,color:"#16a34a",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>✓ Confirmed Working</div>
+            {[
+              "Stop/Start: moves VM to a new host, clears maintenance event. New host gets fresh ~10-day window. OOC capacity risk applies.",
+              "FD Move: edit instance → change fault domain. ~10-day buffer. OOC capacity risk.",
+              "OKE Kill/Replace: terminate node, autoscaler provisions on clean host. Field-validated at 204 VMs.",
+              "OKE Node Cycling: set maximumSurge, trigger Cycle Nodes — OKE handles placement on clean host.",
+              "Cordon + Drain: pods migrate to healthy nodes. Zero downtime for workload.",
+              "Bare Metal: self-service — customer executes firmware update at their chosen time.",
+              "Stopped VMs stay stopped: Oracle does not start stopped instances during maintenance.",
+              "Block volume backups (OCI native): unaffected — snapshots happen at block level.",
+              "Hosts scheduled for maintenance are CLOSED for placement — new/moved VMs will land on clean hosts.",
+            ].map((t,i)=><div key={i} style={{fontSize:11,color:"#15803d",lineHeight:1.6,marginBottom:3,display:"flex",gap:4}}><span style={{color:"#16a34a",flexShrink:0}}>✓</span><span>{t}</span></div>)}
+          </div>
+          <div>
+            <div style={{fontSize:10,fontWeight:800,color:"#dc2626",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>✗ Does NOT Work / Common Misconceptions</div>
+            {[
+              "Force Reboot: stays on the SAME host. Does not clear maintenance. Never use this.",
+              "Reboot: stays on the same host. Does not clear maintenance.",
+              "DR Failover: DR regions are patched concurrently. Failing over does NOT avoid maintenance.",
+              "DenseIO Stop/Start: stopping permanently destroys all local NVMe data.",
+              "GPU Stop/Start: extreme OOC risk. GPU capacity is highly constrained — instance may be stranded.",
+              "Capacity Reservations: do NOT tie to a specific hypervisor. Will not guarantee placement after Stop/Start.",
+              "Due Date in Console: this is a BUG — shows 60-day default. Only 'Scheduled to start' time matters.",
+              "In-guest backup agents: affected by the instance shutdown. Only OCI native block volume backups are safe.",
+              "FD/AD serial patching: hosts are batched into staggered groups, NOT patched FD-by-FD serially.",
+              "Live Migration: not available for this maintenance. There is NO Oracle legal approved messaging to share with customers about why. Do not speculate — simply state it is not available.",
+            ].map((t,i)=><div key={i} style={{fontSize:11,color:"#b91c1c",lineHeight:1.6,marginBottom:3,display:"flex",gap:4}}><span style={{color:"#dc2626",flexShrink:0}}>✗</span><span>{t}</span></div>)}
+          </div>
+        </div>
+        {/* Known bugs and field notes */}
+        <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #e7dfdb"}}>
+          <div style={{fontSize:10,fontWeight:800,color:"#d97706",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>⚡ Field Notes</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {[
+              {title:"PROCESSING after FD Move",note:"Known compute bug. Maintenance status shows PROCESSING after FD change instead of CANCELED. Workaround: if PROCESSING does not clear, terminate the instance and re-spin with the same boot disk in the same AD — maintenance status clears to CANCELED. Validate via C4PO if needed."},
+              {title:"Maintenance campaign timeline",note:"Feb 25 - early May 2026. Multi-AD regions run 24/7. Single-AD regions scheduled during off-hours local time (UTC published)."},
+              {title:"Notification lead time",note:"Customers get ~10 days advance notice. No published future schedule for specific hosts beyond the notification."},
+              {title:"Instance lands on unpatched host",note:"If a new/moved instance lands on an unpatched host, it will be scheduled for maintenance in a future window (~10 day notice)."},
+              {title:"OCI Events for monitoring",note:"Filter on Instance Action Begin/End events for SOFTSTOP and START to detect maintenance in real-time. Also use Compute Instance Health Metrics, Monitoring API, or Availability Monitoring to detect instance recovery."},
+              {title:"Exception process",note:"Exists but granted only in extremely rare cases. Customer must follow the published escalation path."},
+              {title:"Firmware Update vs Evacuation",note:"Some instances show 'Evacuation' instead of 'Firmware Update' as the maintenance reason. If a customer reports this, forward specific OCIDs and the notification email to compute for review — do not speculate on the difference."},
+              {title:"Daily fleet impact of self-service moves",note:"VM movement via Stop/Start or FD Move affects only 2-4% of the fleet daily (1 day out of 35 days). Impact on regional capacity after movement should be minimal. Validate in non-prod before production. High-demand shapes (GPU) should NOT use this approach."},
+              {title:"Autoscaling / Instance Pools",note:"Maintenance is NOT a failure event. Autoscaling does not trigger a replacement. The pool's current size does not decrease permanently during a reboot, so no replacement is automatically launched. For OKE, the control plane may try to provision pods on a new node — use Node Cycling proactively instead."},
+              {title:"Group VMs by workload",note:"Work with customers to group VMs by workload. If any component is affected, do a controlled off-hours shutdown of ALL related systems together, re-FD or re-spin the VMs, then bring everything back up. This resets the clock for the entire workload group in one coordinated window."},
+              {title:"Nightly automation",note:"For large fleets, recommend scheduling migrate_fd.py (Gururaj's script) as a nightly cron job in dry-run mode. It monitors PLANNED_CHANGE announcements, identifies affected instances, and can auto-migrate when EXECUTE_FD_MIGRATE=1 is set. Skips already-completed and CANCELED maintenance automatically."},
+              {title:"CSS team awareness (SE only)",note:"CSS was not fully informed about this maintenance campaign initially. This was addressed on Apr 3. If a customer reports conflicting guidance from CSS, escalate through the SE channel — CSS may have given outdated advice."},
+              {title:"A1/A2 (ARM) shapes — constrained capacity",note:"A1 and A2 shapes have limited host capacity. FD moves may fail with OUT_OF_HOST_CAPACITY even when the OCI_ComputeCapacityReport tool shows AVAILABLE — the report is a point-in-time snapshot and actual placement can fail if host capacity is exhausted. During this campaign, ~2-4% of fleet is in motion daily, further reducing available capacity. Try different ADs, attempt off-peak hours, or accept the maintenance window. Open an SR for capacity assistance if critical."},
+              {title:"OCI_ComputeCapacityReport tool",note:"github.com/Olygo/OCI_ComputeCapacityReport — checks capacity per region/AD/FD/shape. Useful as a guide but NOT a guarantee of placement. Point-in-time snapshot. Capacity fluctuates during the maintenance campaign. Always have a fallback plan (accept the window) if FD move fails."},
+              {title:"Internal validation tools (SE only)",note:"ZZ_HOSTNIC_ANALYSIS dashboard: filter by Tenant_ID on the VM page to see instances on unpatched hosts and the firmware update map. C4PO: verify hypervisor evacuation status after a customer does a Stop/Start or FD move. Use these to validate host status when a customer reports PROCESSING or unclear maintenance state."},
+            ].map((f,i)=><div key={i} style={{fontSize:10,lineHeight:1.5,padding:"6px 8px",background:"#fff",borderRadius:6,border:"1px solid #f2ebe7"}}><span style={{fontWeight:700,color:"#1f1b1a"}}>{f.title}:</span> <span style={{color:"#5f5956"}}>{f.note}</span></div>)}
+          </div>
+        </div>
+      </div>
+
+      {/* Strategy groups with per-instance detail */}
+      {sorted.map(({strategy:st,instances:insts})=>(
+        <div key={st.id} style={{border:`1.5px solid ${st.color}22`,borderLeft:`4px solid ${st.color}`,borderRadius:12,padding:"18px 20px",marginBottom:16,background:`${st.color}06`}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+            <span style={{fontSize:22}}>{st.icon}</span>
+            <span style={{fontWeight:800,fontSize:15,color:st.color}}>{st.label}</span>
+            <span style={{fontSize:10,fontWeight:700,color:"#8a7f79",background:"#f3f2f0",padding:"2px 8px",borderRadius:5}}>{insts.length} instance{insts.length!==1?"s":""}</span>
+            {st.selfService&&<span style={{fontSize:9,fontWeight:700,color:"#16a34a",background:"#f0fdf4",padding:"2px 6px",borderRadius:4,border:"1px solid #86efac"}}>Self-Service Available</span>}
+            {st.costImpact!=="none"&&<span style={{fontSize:9,fontWeight:700,color:"#b45309",background:"#fffbeb",padding:"2px 6px",borderRadius:4,border:"1px solid #fde68a"}}>💰 {st.costImpact}</span>}
+            <span style={{fontSize:9,fontWeight:700,color:st.risk==="high"?"#dc2626":st.risk==="medium"?"#d97706":"#16a34a",background:st.risk==="high"?"#fef2f2":st.risk==="medium"?"#fffbeb":"#f0fdf4",padding:"2px 6px",borderRadius:4,border:`1px solid ${st.risk==="high"?"#fca5a5":st.risk==="medium"?"#fde68a":"#86efac"}`}}>Risk: {st.risk}</span>
+          </div>
+          <p style={{fontSize:12,color:"#5f5956",margin:"0 0 12px 0",lineHeight:1.6}}>{st.summary}</p>
+
+          {/* Numbered action steps */}
+          <div style={{background:"#fff",borderRadius:10,padding:"12px 14px",marginBottom:12,border:"1px solid #f2ebe7"}}>
+            <div style={{fontSize:10,fontWeight:800,color:"#8a7f79",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Action Steps</div>
+            {st.actions.map((a,i)=><div key={i} style={{fontSize:11,color:a.startsWith("⚠")?"#b91c1c":"#5f5956",fontWeight:a.startsWith("⚠")?600:400,lineHeight:1.6,display:"flex",gap:8,marginBottom:4}}>
+              <span style={{width:20,height:20,borderRadius:"50%",background:a.startsWith("⚠")?"#fef2f2":st.color,color:a.startsWith("⚠")?"#dc2626":"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:9,flexShrink:0,border:a.startsWith("⚠")?`1px solid #fca5a5`:"none"}}>{a.startsWith("⚠")?"!":i+1}</span>
+              <span>{a.startsWith("⚠")?a.slice(2):a}</span>
+            </div>)}
+          </div>
+
+          {/* Per-instance cards */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))",gap:8}}>
+            {insts.map(i=>{
+              const d=i._date;const cd=cdStr(d);
+              return(
+              <div key={i.ID} style={{background:"#fff",borderRadius:10,padding:"12px 14px",border:`1px solid ${st.color}22`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:13,color:"#1f1b1a"}}>{i.Display_Name}</div>
+                    <div style={{fontSize:10,color:"#8a7f79"}}>{i.Shape}</div>
+                  </div>
+                  {cd&&<span style={{fontSize:10,fontWeight:700,color:d&&d.getTime()-now<7*864e5?"#dc2626":"#d97706",background:d&&d.getTime()-now<7*864e5?"#fef2f2":"#fffbeb",padding:"2px 8px",borderRadius:5,whiteSpace:"nowrap"}}>{cd}</span>}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2,fontSize:10,color:"#5f5956",marginBottom:6}}>
+                  <span>Region: <b>{i.Region}</b></span>
+                  <span>FD: <b>{shortFD(i.Fault_Domain)}</b></span>
+                  <span>AD: <b>{shortAD(i.Availability_Domain)}</b></span>
+                  <span>Compartment: <b>{i.Compartment_Name}</b></span>
+                </div>
+                {d&&<div style={{borderTop:"1px solid #f2ebe7",paddingTop:6}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#1f1b1a"}}>Maintenance Window</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2,fontSize:10,color:"#5f5956",marginTop:2}}>
+                    <span><b>UTC:</b> {i.Maintenance_UTC||"—"}</span>
+                    <span><b>IST:</b> {i.Maintenance_IST||"—"}</span>
+                    <span><b>EDT:</b> {i.Maintenance_EDT||"—"}</span>
+                  </div>
+                </div>}
+                {i.Status_Change_Signal&&!["Stable","","-"].includes(i.Status_Change_Signal)&&<div style={{marginTop:4,fontSize:10,fontWeight:700,color:"#c74634",background:"#fdf1ef",padding:"2px 6px",borderRadius:4,display:"inline-block"}}>Signal: {i.Status_Change_Signal}</div>}
+              </div>);
+            })}
+          </div>
+        </div>
+      ))}
+
+      {strategies.length===0&&<div style={{background:"#f0fdf4",borderRadius:12,padding:"24px",textAlign:"center"}}><div style={{fontSize:15,fontWeight:700,color:"#16a34a"}}>No Scheduled Maintenance</div><div style={{fontSize:12,color:"#15803d",marginTop:4}}>All instances are clear. No remediation actions needed.</div></div>}
+    </div>
+  );
+}
+
+// ─── Tab: FD Heatmap ───
+function TabHeatmap({heatmap,subscribedRegions,filterRegion,regionDetails}){
+  const allRegions = filterRegion==="all" ? (subscribedRegions||Object.keys(heatmap)).sort() : [filterRegion];
+  const ALL_FDS=["FD-1","FD-2","FD-3"];
+  // Build a shortAD→fullAD lookup from regionDetails
+  const getADsForRegion=(region)=>{
+    // Priority 1: regionDetails from collector (has full AD list from OCI API)
+    const rd=regionDetails[region];
+    if(rd&&rd.availabilityDomains&&rd.availabilityDomains.length>0) return rd.availabilityDomains;
+    // Priority 2: derive from instance data (ADs where we have instances)
+    const hmADs=heatmap[region]?Object.keys(heatmap[region]).sort():[];
+    if(hmADs.length>0) return hmADs;
+    // Priority 3: no data at all for this region
+    return [];
+  };
+  return(<div>
+    <h2 style={S.h2}>Fault Domain Impact Map</h2>
+    <p style={S.desc}>All availability domains and fault domains across every subscribed region. Maintenance is applied one fault domain at a time within each AD. Empty FDs are available as staging targets. Multiple regions CAN be patched simultaneously.</p>
+    {allRegions.map(region=>{
+      const ads=getADsForRegion(region);
+      const hmRegion=heatmap[region]||{};
+      if(ads.length===0) return(
+        <div key={region} style={{marginBottom:24}}>
+          <div style={{fontSize:13,fontWeight:800,color:"#c74634",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+            <span style={{width:4,height:16,borderRadius:2,background:"#c74634",display:"inline-block"}}/>{region}
+          </div>
+          <div style={{marginLeft:10,padding:"14px 18px",background:"#f8f6f4",borderRadius:10,border:"1px solid #e7dfdb"}}>
+            <span style={{fontSize:11,color:"#8a7f79"}}>No instances deployed in this region</span>
+          </div>
+        </div>
+      );
+      // Count instances + scheduled for region summary
+      const regionInstCount=Object.values(hmRegion).reduce((t,adFds)=>t+Object.values(adFds).reduce((s,c)=>s+c.scheduled+c.notScheduled+c.completed,0),0);
+      const regionSchedCount=Object.values(hmRegion).reduce((t,adFds)=>t+Object.values(adFds).reduce((s,c)=>s+c.scheduled,0),0);
+      return(<div key={region} style={{marginBottom:24}}>
+      <div style={{fontSize:13,fontWeight:800,color:"#c74634",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+        <span style={{width:4,height:16,borderRadius:2,background:"#c74634",display:"inline-block"}}/>{region}
+        <span style={{fontSize:10,fontWeight:600,color:"#8a7f79",marginLeft:4}}>{ads.length} AD{ads.length!==1?"s":""}</span>
+        {regionInstCount>0&&<span style={{fontSize:10,fontWeight:600,color:"#5f5956"}}>{regionInstCount} instance{regionInstCount!==1?"s":""}</span>}
+        {regionSchedCount>0&&<span style={{fontSize:10,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:4}}>{regionSchedCount} scheduled</span>}
+        {regionInstCount===0&&<span style={{fontSize:10,fontWeight:600,color:"#8a7f79"}}>No instances deployed</span>}
+      </div>
+      {ads.map(adFull=>{
+        const adShort=shortAD(adFull);
+        // Match heatmap data by short AD name (heatmap keys are shortAD)
+        const hmAD=hmRegion[adShort]||{};
+        return(<div key={adFull} style={{marginBottom:12,marginLeft:10}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#5f5956",marginBottom:6}}>{adShort}</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {ALL_FDS.map(fd=>{
+            const cell=hmAD[fd];
+            if(!cell){
+              return(<div key={fd} style={{background:"#fff",border:"1.5px dashed #d7d2cd",borderRadius:10,padding:"10px 12px",minWidth:140}}>
+                <div style={{fontWeight:800,fontSize:12,marginBottom:4,color:"#b0a8a2"}}>{fd}</div>
+                <div style={{fontSize:10,color:"#b0a8a2"}}>No instances</div>
+                <div style={{fontSize:9,color:"#16a34a",fontWeight:700,marginTop:4,background:"#f0fdf4",padding:"2px 6px",borderRadius:4,display:"inline-block"}}>Available for staging</div>
+              </div>);
+            }
+            const hot=cell.scheduled>0,done=cell.completed>0&&!hot;
+            const bg=hot?"linear-gradient(135deg,#fef3c7,#fde68a)":done?"linear-gradient(135deg,#dcfce7,#bbf7d0)":"#f8f6f4";
+            const bdr=hot?"#f59e0b":done?"#86efac":"#e7dfdb";
+            const earliest=cell.dates.length?new Date(Math.min(...cell.dates.map(d=>d.getTime()))):null;
+            const total=cell.scheduled+cell.notScheduled+cell.completed;
+            const hasDense=cell.instances.some(i=>isDense(i.Shape)&&i.reboot_status==="Scheduled");
+            return(<div key={fd} style={{background:bg,border:`1.5px solid ${bdr}`,borderRadius:10,padding:"10px 12px",minWidth:140,position:"relative"}}>
+              {hasDense&&<span style={{position:"absolute",top:6,right:8,fontSize:9,fontWeight:800,color:"#dc2626",background:"#fef2f2",padding:"1px 5px",borderRadius:4,border:"1px solid #fca5a5"}}>NVMe</span>}
+              <div style={{fontWeight:800,fontSize:12,marginBottom:4}}>{fd}</div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {cell.scheduled>0&&<Badge status="scheduled">{cell.scheduled} sched.</Badge>}
+                {cell.completed>0&&<Badge status="completed">{cell.completed} done</Badge>}
+                {cell.notScheduled>0&&<Badge status="notScheduled">{cell.notScheduled} clear</Badge>}
+              </div>
+              {earliest&&<div style={{fontSize:10,color:"#92400e",marginTop:5,fontWeight:600}}>Next: {fD(earliest)} {fT(earliest)}</div>}
+              <div style={{fontSize:10,color:"#8a7f79",marginTop:2}}>{total} inst.</div>
+            </div>);
+          })}
+        </div>
+      </div>);
+      })}
+    </div>);
+    })}
+    <div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:14,paddingTop:14,borderTop:"1px solid #f2ebe7"}}>
+      {[["linear-gradient(135deg,#fef3c7,#fde68a)","#f59e0b","Scheduled"],["linear-gradient(135deg,#dcfce7,#bbf7d0)","#86efac","Completed"],["#f8f6f4","#e7dfdb","Clear (has instances)"],["#fff","#d7d2cd","Empty (available for staging)"]].map(([bg,b,l])=>(<div key={l} style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:"#8a7f79"}}><span style={{width:12,height:12,borderRadius:4,background:bg,border:`1px ${l.includes("Empty")?"dashed":"solid"} ${b}`}}/>{l}</div>))}
+    </div>
+  </div>);
+}
+
+// ─── Tab: Timeline ───
+function TabTimeline({timeline,timelineRange}){
+  return(<div>
+    <h2 style={S.h2}>Maintenance Timeline</h2>
+    <p style={S.desc}>All {timeline.length} scheduled instances sorted chronologically. Each dot shows the strategy classification.</p>
+    {timelineRange&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8a7f79",marginBottom:6,padding:"0 130px 0 186px"}}><span>{fD(timelineRange.min)}</span><span>{fD(timelineRange.max)}</span></div>}
+    {timeline.map(inst=>{
+      if(!timelineRange)return null;
+      const span=timelineRange.max.getTime()-timelineRange.min.getTime()||1;
+      const left=((inst._date.getTime()-timelineRange.min.getTime())/span)*100;
+      return(<div key={inst.ID} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid #f2ebe7"}}>
+        <div style={{width:180,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          <span style={{fontSize:12,fontWeight:600}}>{inst.Display_Name}</span>
+          <span style={{marginLeft:4,fontSize:9,fontWeight:800,color:inst.strategy.color,background:`${inst.strategy.color}11`,padding:"1px 4px",borderRadius:3}}>{inst.strategy.icon}</span>
+        </div>
+        <div style={{flex:1,position:"relative",height:22,background:"#f8f6f4",borderRadius:6,overflow:"hidden"}}>
+          <div style={{position:"absolute",left:`${Math.max(0,Math.min(left,95))}%`,top:2,width:18,height:18,borderRadius:"50%",background:inst.strategy.color,border:"2px solid #fff",boxShadow:"0 1px 4px rgba(0,0,0,0.15)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:8,color:"#fff",fontWeight:800}}>{inst._date.getDate()}</span>
+          </div>
+        </div>
+        <div style={{width:130,flexShrink:0,textAlign:"right"}}><span style={{fontSize:11,color:"#5f5956"}}>{fDT(inst._date)}</span></div>
+      </div>);
+    })}
+  </div>);
+}
+
+// ─── Tab: Gaps ───
+function TabGaps({gaps,seMode}){
+  const criticals=gaps.filter(g=>g.severity==="critical");
+  const highs=gaps.filter(g=>g.severity==="high");
+  const mediums=gaps.filter(g=>g.severity==="medium");
+  const remediation=seMode?{
+    dr_overlap:{icon:"🌐",action:["Review the Timeline tab to identify overlapping windows across regions","Stagger self-service remediation (FD moves, Stop/Start) so you are not moving instances in both regions simultaneously","Ensure application-level failover can tolerate one region in maintenance while the other is mid-remediation"]},
+    single_fd:{icon:"🏗",action:["Redistribute instances across 2+ fault domains using the FD Impact Map","Edit each instance to change its fault domain","Prioritize instances behind load balancers — they benefit most from FD distribution"]},
+    dense_nvme:{icon:"🛡",action:["Back up all local NVMe data immediately","Validate backup integrity and confirm restore path","Do NOT use Stop/Start — stopping permanently erases local NVMe storage","Accept the scheduled maintenance window (~20 min reboot)"]},
+    oke:{icon:"⎈",action:["Cordon each node to stop new pod scheduling","Drain to migrate existing pods to healthy nodes","Option A: Wait for maintenance reboot, then uncordon (zero cost)","Option B: Terminate node, autoscaler provisions replacement on clean host","Option C: Use OKE Node Cycling with maxSurge — OKE handles everything","See OKE Playbook tab for detailed kubectl commands"]},
+    gpu_ooc:{icon:"🎮",action:["Do NOT use Stop/Start — GPU capacity is extremely constrained","If peers exist in other FDs, use FD Move as the safer option","For singletons, provision a replacement GPU instance first (Over-Provision)","Accept the maintenance window if ~20 min downtime is tolerable"]},
+    arm_capacity:{icon:"⚠",action:["A1/A2 (ARM) shapes have constrained host capacity — FD moves may fail with OUT_OF_HOST_CAPACITY","Use OCI_ComputeCapacityReport (github.com/Olygo/OCI_ComputeCapacityReport) to check per-FD availability before attempting moves","Target only FDs showing AVAILABLE — do not attempt moves to OUT_OF_HOST_CAPACITY FDs","Try different ADs if the region has multiple ADs (e.g., us-chicago-1 has 3 ADs with independent capacity pools)","Try off-peak hours when capacity churn from the maintenance campaign is lower","If all FDs show OUT_OF_HOST_CAPACITY for this shape, accept the maintenance window — it is the only safe option","Open an SR for capacity assistance if the customer has a critical business requirement"]},
+    bm_info:{icon:"🔧",action:["Bare Metal instances are self-service — no Oracle-initiated reboot","Customer schedules and executes the firmware update at their convenience","Coordinate the update timing with the customer's maintenance window"]},
+    maintenance_pending:{icon:"📋",action:["Review the Strategy Picker tab for per-instance recommendations","Each instance is classified by shape, workload type, and fault domain topology","Accept the ~20 min reboot if downtime is tolerable (zero cost, zero risk)","Use FD Move or Stop/Start to relocate ahead of the window (OOC capacity risk applies)","Hosts scheduled for maintenance are closed for placement — moved instances land on clean hosts"]},
+    singleton_risk:{icon:"⚠",action:["These instances have no peers — workload is fully unavailable during ~20 min window","Option A: Accept the downtime if tolerable","Option B: Pre-stage a replacement in a different FD, validate, cut traffic (Over-Provision strategy)","Do NOT use Stop/Start without a replacement ready — OOC risk leaves you with zero instances"]},
+    signal_change:{icon:"🔔",action:["Check the Status Change Signal in Fleet View for each instance","'Not Scheduled -> Scheduled' means newly assigned maintenance","'Maintenance Updated' means the window was modified","Review the Timeline tab for updated scheduling"]},
+  }:{
+    dr_overlap:{icon:"🌐",action:["Maintenance windows may overlap across your primary and DR regions","Work with your Oracle team to review timing for each region","Plan for the possibility of concurrent impact in both environments"]},
+    single_fd:{icon:"🏗",action:["All instances in this workload group share a single fault domain","Work with your Oracle team to review fault domain distribution","Distributing across fault domains improves availability during maintenance"]},
+    dense_nvme:{icon:"🛡",action:["This instance uses local NVMe storage","NVMe data must be backed up before the maintenance window","Work with your Oracle team to plan the backup and maintenance approach"]},
+    oke:{icon:"⎈",action:["Kubernetes worker nodes require preparation before the maintenance window","Workloads should be migrated off scheduled nodes to avoid pod disruption","Work with your Oracle team to plan the node maintenance approach"]},
+    gpu_ooc:{icon:"🎮",action:["GPU instances require special handling due to capacity constraints","Standard relocation approaches carry higher risk for GPU shapes","Work with your Oracle team to plan the safest maintenance approach"]},
+    arm_capacity:{icon:"⚠",action:["A1/A2 (ARM) shapes have limited host capacity in some fault domains","FD relocation may not be immediately available due to capacity constraints","Work with your Oracle team to identify available fault domains before attempting moves","Accepting the scheduled maintenance window (~20 min reboot) may be the safest option"]},
+    bm_info:{icon:"🔧",action:["Bare Metal instances support self-service firmware updates","You control the timing — no Oracle-initiated reboot will occur","Schedule the update at a convenient maintenance window"]},
+    maintenance_pending:{icon:"📋",action:["Infrastructure maintenance is scheduled for these instances","During the window, each instance is powered off for ~20 minutes while firmware is updated","Instances restart automatically — no action is required","Work with your Oracle team if you need to coordinate timing or minimize impact"]},
+    singleton_risk:{icon:"⚠",action:["These instances have no redundant peers in the same region","During the ~20 minute window, the workload will be temporarily unavailable","Work with your Oracle team to discuss options if downtime needs to be minimized"]},
+    signal_change:{icon:"🔔",action:["The maintenance status for these instances has been recently updated","Review the updated maintenance windows in the Timeline tab","Work with your Oracle team if the new timing requires coordination"]},
+  };
+  return(<div>
+    <h2 style={S.h2}>Resiliency Gap Analysis</h2>
+    <p style={S.desc}>Automated analysis of your fleet's maintenance readiness. Each finding identifies a specific risk with affected instances, operational impact, and recommended remediation steps.</p>
+
+    {/* Severity summary */}
+    <div style={{display:"flex",gap:8,marginBottom:18}}>
+      <div style={{flex:1,background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+        <div style={{fontSize:28,fontWeight:800,color:"#991b1b"}}>{criticals.length}</div>
+        <div style={{fontSize:10,fontWeight:700,color:"#991b1b",textTransform:"uppercase",letterSpacing:"0.06em"}}>Critical</div>
+        <div style={{fontSize:10,color:"#b91c1c",marginTop:2}}>Requires immediate action</div>
+      </div>
+      <div style={{flex:1,background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+        <div style={{fontSize:28,fontWeight:800,color:"#92400e"}}>{highs.length}</div>
+        <div style={{fontSize:10,fontWeight:700,color:"#92400e",textTransform:"uppercase",letterSpacing:"0.06em"}}>High</div>
+        <div style={{fontSize:10,color:"#b45309",marginTop:2}}>Address before maintenance window</div>
+      </div>
+      <div style={{flex:1,background:"#eff6ff",border:"1.5px solid #93c5fd",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+        <div style={{fontSize:28,fontWeight:800,color:"#1e40af"}}>{mediums.length}</div>
+        <div style={{fontSize:10,fontWeight:700,color:"#1e40af",textTransform:"uppercase",letterSpacing:"0.06em"}}>Medium</div>
+        <div style={{fontSize:10,color:"#2563eb",marginTop:2}}>Recommended improvement</div>
+      </div>
+    </div>
+
+    {/* Findings with remediation */}
+    {[...criticals,...highs,...mediums].map((g,i)=>{
+      const rem=remediation[g.type]||{action:"Review affected instances and apply the recommended strategy from the Strategy Picker tab.",icon:"📋"};
+      return(<div key={i} style={{background:g.severity==="critical"?"#fef2f2":"#fffbeb",border:`1.5px solid ${g.severity==="critical"?"#fca5a5":"#fde68a"}`,borderRadius:12,padding:"16px 18px",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+          <span style={{fontSize:18}}>{rem.icon}</span>
+          <Sev s={g.severity}/>
+          <span style={{fontWeight:700,fontSize:13}}>{g.title}</span>
+          <span style={{fontSize:10,fontWeight:600,color:"#8a7f79",marginLeft:"auto"}}>{g.instances.length} instance{g.instances.length!==1?"s":""} affected</span>
+        </div>
+        <div style={{marginLeft:26}}>
+          <p style={{fontSize:12,color:"#5f5956",margin:"0 0 10px 0",lineHeight:1.6}}>{g.detail}</p>
+          <div style={{background:"#fff",borderRadius:8,padding:"10px 14px",border:"1px solid #f2ebe7",marginBottom:8}}>
+            <div style={{fontSize:10,fontWeight:800,color:"#1f1b1a",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Recommended Action</div>
+            {(rem.action||[]).map((a,j)=><div key={j} style={{display:"flex",gap:6,marginBottom:3}}><span style={{color:g.severity==="critical"?"#dc2626":"#d97706",fontWeight:700,flexShrink:0,fontSize:11}}>•</span><span style={{fontSize:11,color:"#5f5956",lineHeight:1.5}}>{a}</span></div>)}
+          </div>
+          {g.instances.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{g.instances.slice(0,12).map(x=><Chip key={x.ID} n={x.Display_Name}/>)}{g.instances.length>12&&<span style={{fontSize:10,color:"#8a7f79",alignSelf:"center"}}>+{g.instances.length-12} more</span>}</div>}
+        </div>
+      </div>);
+    })}
+
+    {gaps.length===0&&<div style={{background:"#f0fdf4",borderRadius:12,padding:"16px 18px",marginBottom:16,textAlign:"center"}}><div style={{fontSize:15,fontWeight:700,color:"#16a34a"}}>No Resiliency Gaps Detected</div><div style={{fontSize:12,color:"#15803d",marginTop:4}}>Fleet topology and maintenance readiness look good. See the Cost Impact tab for the full strategy reference guide.</div></div>}
+
+    {/* What Happens During Maintenance */}
+    <div style={{marginTop:20,background:"#fff",borderRadius:12,padding:"16px 18px",border:"1px solid #e7dfdb"}}>
+      <div style={{fontWeight:800,fontSize:13,marginBottom:10,color:"#1f1b1a"}}>What Happens During the Maintenance Window</div>
+      <div style={{fontSize:10,fontWeight:700,color:"#d97706",background:"#fffbeb",padding:"4px 10px",borderRadius:6,marginBottom:10,display:"inline-block"}}>Campaign: Feb 25 - early May 2026 · Multi-AD regions: 24/7 · Single-AD: off-hours UTC</div>
+      <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"6px 14px",fontSize:11,color:"#5f5956",lineHeight:1.6}}>
+        <span style={{fontWeight:700,color:"#d97706"}}>T-0</span><span>Oracle initiates a soft stop with a 5-minute grace period for clean shutdown</span>
+        <span style={{fontWeight:700,color:"#d97706"}}>T+5m</span><span>Instance is powered off. Hypervisor firmware update begins on the host</span>
+        <span style={{fontWeight:700,color:"#d97706"}}>T+15-20m</span><span>Firmware update completes. Instance is automatically restarted on the same host</span>
+        <span style={{fontWeight:700,color:"#d97706"}}>T+20m</span><span>Instance reaches RUNNING state. Applications resume</span>
+      </div>
+      <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div style={{background:"#f0fdf4",borderRadius:8,padding:"10px 12px",border:"1px solid #86efac"}}>
+          <div style={{fontSize:10,fontWeight:800,color:"#166534",marginBottom:4}}>Preserved During Maintenance</div>
+          <div style={{fontSize:10,color:"#15803d",lineHeight:1.6}}>Boot volumes and block volumes are preserved. Network config (private IP, public IP, VNIC attachments) is preserved. OCI native block volume backup snapshots are unaffected — they happen at block level. Stopped instances remain stopped — Oracle does not start them.</div>
+        </div>
+        <div style={{background:"#fef2f2",borderRadius:8,padding:"10px 12px",border:"1px solid #fca5a5"}}>
+          <div style={{fontSize:10,fontWeight:800,color:"#991b1b",marginBottom:4}}>At Risk / Affected</div>
+          <div style={{fontSize:10,color:"#b91c1c",lineHeight:1.6}}>Local NVMe storage on DenseIO shapes (if Stop/Start is used). In-guest backup agents are affected by the instance shutdown. No live migration for this maintenance type. Due Date shown in Console is a bug (60-day default) — only "Scheduled to start" time matters. CanReschedule is set to false.</div>
+        </div>
+      </div>
+    </div>
+
+    {/* Pre-Maintenance Checklist — categorized */}
+    <div style={{marginTop:16,background:"#f8f6f4",borderRadius:12,padding:"16px 18px"}}>
+      <div style={{fontWeight:800,fontSize:13,marginBottom:12,color:"#1f1b1a"}}>Pre-Maintenance Readiness Checklist</div>
+      {[
+        {cat:"Monitoring & Alerting",color:"#2563eb",items:["Verify OCI Notification Service routes maintenance alerts to your operations team","Enable OCI Monitoring alarms for instance health (500M free datapoints per month)","Configure OCI Events Service rules for instanceMaintenanceEvent state changes","Set up Instance Action Begin/End event rules (filter SOFTSTOP, START) for real-time detection","Enable Compute Instance Health Metrics to detect instance recovery after maintenance","Consider Availability Monitoring to monitor application endpoints during maintenance windows"]},
+        {cat:"Availability & Topology",color:"#16a34a",items:["Confirm application-tier instances span 2+ fault domains per availability domain","Check load balancers have active health checks on all backend sets","Scale out workloads into unaffected fault domains before each maintenance wave","Capacity Reservations do NOT protect against OOC during Stop/Start — CR does not tie to a hypervisor"]},
+        {cat:"Data Protection",color:"#dc2626",items:["DenseIO: validate NVMe backups before each window — do NOT use Stop/Start","Verify boot volume and block volume backups are current for all scheduled instances","OCI native block volume backups are unaffected (block-level snapshots)","Verify in-guest backup agents handle graceful shutdown — they ARE affected by instance termination"]},
+        {cat:"Shape-Specific",color:"#b45309",items:["GPU shapes: do NOT use Stop/Start — extreme OOC capacity risk, instance may be stranded","Bare Metal: self-service update — customer controls timing, no Oracle-initiated reboot","DenseIO: only strategy is Wait + NVMe Backup — Stop/Start destroys local storage"]},
+        {cat:"Kubernetes",color:"#7c3aed",items:["OKE nodes: cordon and drain (or kill/replace via autoscaler, or Node Cycling with maxSurge) before each window","Verify cluster autoscaler is enabled if using kill/replace strategy","Confirm PodDisruptionBudgets allow drain operations","Node Cycling: set maximumSurge to 1+, trigger Cycle Nodes in Console or CLI"]},
+        {cat:"Support Readiness",color:"#0891b2",items:["Prepare SR template: 'Instance issue after Compute Maintenance' with CN reference (e.g., COMPUTE-100847)","DR failover will NOT avoid maintenance — both regions may be patched concurrently","Due Date in Console is a known bug (60-day default) — only 'Scheduled to start' time matters","PROCESSING status after FD move is a known compute bug — clears to CANCELED"]},
+      ].map(({cat,color,items})=>(
+        <div key={cat} style={{marginBottom:12}}>
+          <div style={{fontSize:10,fontWeight:800,color,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>{cat}</div>
+          {items.map((it,i)=>(<div key={i} style={{display:"flex",gap:8,marginBottom:4}}><span style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${color}44`,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:9,color,fontWeight:800}}>☐</span><span style={{fontSize:11,color:"#5f5956",lineHeight:1.6}}>{it}</span></div>))}
+        </div>
+      ))}
+    </div>
+  </div>);
+}
+
+// ─── Tab: OKE Playbook ───
+function TabOKE({okeInstances}){
+  const clusters={};okeInstances.forEach(i=>{const c=i.freeformTags?.["oke-cluster"]||i.Compartment_Name||"unknown";if(!clusters[c])clusters[c]=[];clusters[c].push(i);});
+  return(<div>
+    <div style={{background:"#f5f3ff",border:"1.5px solid #c4b5fd",borderRadius:12,padding:"14px 16px",marginBottom:16}}>
+      <div style={{fontWeight:700,fontSize:13,color:"#5b21b6",marginBottom:4}}>OKE Node Maintenance Playbook</div>
+      <p style={{fontSize:12,color:"#6d28d9",margin:0}}>Three validated strategies for OKE nodes. Pick based on your tolerance for temporary cost vs. control over timing.</p>
+    </div>
+    {Object.entries(clusters).map(([cn,nodes])=>(<div key={cn} style={{marginBottom:12}}>
+      <div style={{fontSize:11,fontWeight:700,color:"#5b21b6",marginBottom:4}}>Cluster: {cn} ({nodes.length} node{nodes.length!==1?"s":""})</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:3}}>{nodes.map(n=><span key={n.ID} style={{fontSize:10,padding:"2px 6px",borderRadius:5,background:"#f5f3ff",border:"1px solid #c4b5fd",color:"#5b21b6",fontWeight:600}}>{n.Display_Name} — {fD(pD(n.Maintenance_UTC))}</span>)}</div>
+    </div>))}
+
+    {/* Strategy A */}
+    <div style={{border:"1.5px solid #c4b5fd",borderRadius:12,padding:"14px 16px",marginBottom:12,background:"#faf8ff"}}>
+      <div style={{fontWeight:800,fontSize:13,color:"#5b21b6",marginBottom:6}}>Strategy A: Cordon + Drain (Wait for Maintenance)</div>
+      <p style={{fontSize:11,color:"#6d28d9",margin:"0 0 8px 0"}}>Zero cost. Pods migrate to healthy nodes. Accept the ~20 min node reboot during the scheduled window.</p>
+      {[{n:1,t:"Cordon",c:"kubectl cordon <node>",no:"Stops new pod scheduling on this node."},{n:2,t:"Drain",c:"kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --grace-period=120",no:"Evicts pods to healthy nodes."},{n:3,t:"Wait for maintenance",c:null,no:"~20 min reboot. Node rejoins automatically."},{n:4,t:"Uncordon",c:"kubectl uncordon <node>",no:"Re-enables scheduling. Node is on updated firmware."}].map((s,i,a)=><div key={s.n} style={{borderBottom:i<a.length-1?"1px solid #ede8fc":"none"}}><Step n={s.n} title={s.t} cmd={s.c} note={s.no} color="#7c3aed"/></div>)}
+    </div>
+
+    {/* Strategy B */}
+    <div style={{border:"1.5px solid #f59e0b",borderRadius:12,padding:"14px 16px",marginBottom:12,background:"#fffdf5"}}>
+      <div style={{fontWeight:800,fontSize:13,color:"#b45309",marginBottom:6}}>Strategy B: Kill and Replace (Autoscaler) <span style={{fontSize:9,background:"#fef3c7",padding:"2px 6px",borderRadius:4,fontWeight:700,color:"#92400e"}}>FIELD VALIDATED</span></div>
+      <p style={{fontSize:11,color:"#92400e",margin:"0 0 8px 0"}}>Terminate the node and let cluster autoscaler provision a replacement on a clean host. Brief over-provisioning cost during ramp. Validated by a customer with 204 VMs.</p>
+      {[{n:1,t:"Cordon + Drain",c:"kubectl cordon <node> && kubectl drain <node> --ignore-daemonsets --delete-emptydir-data",no:"Empty the node first."},{n:2,t:"Terminate the node",c:"oci compute instance terminate --instance-id <OCID> --preserve-boot-volume false",no:"Or terminate from Console. Autoscaler detects the missing node."},{n:3,t:"Autoscaler provisions replacement",c:null,no:"New node lands on a patched or not-yet-scheduled host (scheduled hosts are closed for placement). This is safe."},{n:4,t:"Verify cluster health",c:"kubectl get nodes -o wide",no:"Confirm new node is Ready and pods are balanced."}].map((s,i,a)=><div key={s.n} style={{borderBottom:i<a.length-1?"1px solid #fde68a":"none"}}><Step n={s.n} title={s.t} cmd={s.c} note={s.no} color="#d97706"/></div>)}
+    </div>
+
+    {/* Strategy C */}
+    <div style={{border:"1.5px solid #60a5fa",borderRadius:12,padding:"14px 16px",marginBottom:12,background:"#f8fbff"}}>
+      <div style={{fontWeight:800,fontSize:13,color:"#2563eb",marginBottom:6}}>Strategy C: Stop/Start (Move Host on Your Schedule)</div>
+      <p style={{fontSize:11,color:"#2563eb",margin:"0 0 8px 0"}}>Cordon, drain, then Stop/Start to move node to a new host. OOC capacity risk applies. Good when you need to control exact timing.</p>
+      {[{n:1,t:"Cordon + Drain",c:"kubectl cordon <node> && kubectl drain <node> --ignore-daemonsets --delete-emptydir-data",no:"Empty the node."},{n:2,t:"Stop the instance",c:"oci compute instance action --instance-id <OCID> --action STOP",no:"Wait for STOPPED state. Do NOT use Force Reboot."},{n:3,t:"Start the instance",c:"oci compute instance action --instance-id <OCID> --action START",no:"Lands on a new host. Maintenance event should clear. OOC risk if no capacity."},{n:4,t:"Uncordon",c:"kubectl uncordon <node>",no:"Re-enables scheduling on the now-clean node."}].map((s,i,a)=><div key={s.n} style={{borderBottom:i<a.length-1?"1px solid #bfdbfe":"none"}}><Step n={s.n} title={s.t} cmd={s.c} note={s.no} color="#2563eb"/></div>)}
+    </div>
+
+    {/* Strategy D */}
+    <div style={{border:"1.5px solid #14b8a6",borderRadius:12,padding:"14px 16px",marginBottom:12,background:"#f0fdfa"}}>
+      <div style={{fontWeight:800,fontSize:13,color:"#0f766e",marginBottom:6}}>Strategy D: Node Cycling (maxSurge) <span style={{fontSize:9,background:"#ccfbf1",padding:"2px 6px",borderRadius:4,fontWeight:700,color:"#0f766e"}}>OKE NATIVE</span></div>
+      <p style={{fontSize:11,color:"#0f766e",margin:"0 0 8px 0"}}>Use OKE's built-in Node Cycling to replace nodes on clean hosts. OKE spins up a new node first, then cordons, drains, and terminates the old one. Zero downtime. OCI scheduler places the new node on a host not scheduled for maintenance.</p>
+      {[{n:1,t:"Configure maxSurge",c:null,no:"Set maximumSurge to 1 or more in your Node Pool settings (Console or CLI). This allows OKE to spin up a new node before terminating the old one."},{n:2,t:"Trigger Node Cycling",c:"# Console: Node Pool → Cycle Nodes\n# Or via OCI CLI",no:"OKE provisions a new node. OCI scheduler places it on a clean host (scheduled hosts are closed for placement)."},{n:3,t:"Automatic drain + terminate",c:null,no:"OKE cordons and drains the old node, migrates pods to the new node, then terminates the old one."},{n:4,t:"Verify cluster health",c:"kubectl get nodes -o wide && kubectl get pods -A | grep -v Running",no:"Confirm new node is Ready, pods are balanced, no pending pods."}].map((s,i,a)=><div key={s.n} style={{borderBottom:i<a.length-1?"1px solid #99f6e4":"none"}}><Step n={s.n} title={s.t} cmd={s.c} note={s.no} color="#0d9488"/></div>)}
+    </div>
+
+    <div style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:10,padding:"12px 14px"}}>
+      <div style={{fontWeight:700,fontSize:11,color:"#92400e",marginBottom:4}}>Autoscaler and Instance Pool Behavior</div>
+      <p style={{fontSize:11,color:"#78716c",margin:0,lineHeight:1.5}}>Maintenance is NOT a failure event. Autoscaling and instance pools do not trigger a replacement — the pool's current size does not decrease permanently during a reboot, so no replacement is automatically launched. However, for OKE, when a pod on a node is removed during maintenance, the control plane may try to provision it on a new node, which could trigger cluster autoscaling. Use Node Cycling (Strategy D) proactively instead of waiting for this to happen. Hosts scheduled for maintenance are closed for placement — any node provisioned by the autoscaler or moved via Stop/Start will land on a clean host. The new host may still receive a future maintenance notification as the rollout progresses, but this buys time.</p>
+    </div>
+  </div>);
+}
+
+// ─── Tab: Cost ───
+function TabCost({strategies,scheduled}){
+  const allRows=[
+    {id:"bm_self_service",icon:"🔧",label:"Bare Metal — Self-Service",color:"#0891b2",down:"Customer-controlled window",cost:"None",costColor:"#16a34a",ooc:"None",complexity:"Low",approach:"self-service",rationale:"BM customers control their own update timing. No Oracle-initiated reboot."},
+    {id:"wait_backup",icon:"🛡",label:"Wait + NVMe Backup",color:"#dc2626",down:"~20 min reboot",cost:"None",costColor:"#16a34a",ooc:"None",complexity:"Low",approach:"accept",rationale:"Accept the scheduled window. Only option for DenseIO — Stop/Start destroys NVMe."},
+    {id:"oke_drain_replace",icon:"⎈",label:"OKE Drain (wait for reboot)",color:"#7c3aed",down:"~0 (pods migrate before window)",cost:"None",costColor:"#16a34a",ooc:"None",complexity:"Low",approach:"accept",rationale:"Cordon + drain moves pods to healthy nodes. Accept the reboot. Zero cost, zero downtime."},
+    {id:"oke_drain_replace",icon:"⎈",label:"OKE Kill/Replace (autoscaler)",color:"#d97706",down:"~0 (replacement provisioned)",cost:"Brief overlap cost",costColor:"#d97706",ooc:"Low",complexity:"Medium",approach:"self-service",rationale:"Terminate node, autoscaler provisions replacement on clean host. Field-validated at 204 VMs."},
+    {id:"oke_drain_replace",icon:"⎈",label:"OKE Node Cycling (maxSurge)",color:"#0d9488",down:"~0 (OKE handles placement)",cost:"Brief overlap during surge",costColor:"#d97706",ooc:"None",complexity:"Low",approach:"self-service",rationale:"OKE-native. Set maxSurge, trigger Cycle Nodes. OKE spins up clean node first, then terminates old."},
+    {id:"fd_move_buffer",icon:"↗",label:"FD Move (~10-day buffer)",color:"#2563eb",down:"Reboot during FD change",cost:"None",costColor:"#16a34a",ooc:"Medium",oocColor:"#d97706",complexity:"Low",approach:"self-service",rationale:"Move to clear FD, get fresh ~10-day window. Peers maintain availability."},
+    {id:"stop_start",icon:"⟳",label:"Stop/Start (~10-day buffer)",color:"#d97706",down:"Minutes (stop + start cycle)",cost:"None",costColor:"#16a34a",ooc:"High — stranded if OOC",oocColor:"#dc2626",complexity:"Low",approach:"self-service",rationale:"You control the exact timing. New host gets fresh ~10-day window. Original host closed after stop — capacity risk. NOT for GPU shapes."},
+    {id:"overprovision_then_move",icon:"📦",label:"Over-Provision → Cutover",color:"#b45309",down:"~0 (traffic cutover)",cost:"Duplicate instance",costColor:"#dc2626",ooc:"Low",complexity:"High",complexityColor:"#dc2626",approach:"self-service",rationale:"Provision replacement first. Highest cost but safest for singletons and GPU shapes."},
+  ];
+  const activeIds=new Set(strategies.map(s=>s.strategy.id));
+  const acceptCount=strategies.filter(s=>["wait_backup","oke_drain_replace"].includes(s.strategy.id)).length;
+  const ssCount=strategies.filter(s=>["bm_self_service","oke_drain_replace","fd_move_buffer","stop_start","overprovision_then_move"].includes(s.strategy.id)).length;
+  const td={padding:"8px 10px"};
+  return(<div>
+    <h2 style={S.h2}>Cost Impact Estimator</h2>
+    <p style={S.desc}>All 6 remediation strategies compared across downtime, cost, OOC risk, and complexity. Strategies that apply to your fleet show instance counts. Others show as reference for customer conversations.</p>
+
+    {/* Two approach boxes — connected to table */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+      <div style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:12,padding:"14px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <span style={{fontSize:20,fontWeight:800,color:"#166534"}}>{acceptCount}</span>
+          <div style={{fontWeight:800,fontSize:12,color:"#166534"}}>Accept Maintenance Window</div>
+          <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:"#f0fdf4",color:"#166534",border:"1px solid #86efac"}}>Lowest Cost</span>
+        </div>
+        <div style={{fontSize:11,color:"#15803d",lineHeight:1.6}}>
+          {acceptCount>0?`${acceptCount} instance${acceptCount!==1?"s":""} can accept the scheduled ~20 min reboot with zero additional cost.`:"No instances currently assigned to accept-window strategies."}
+          {" "}Best for workloads behind load balancers, batch jobs, and non-customer-facing services. Rows marked <b style={{color:"#166534"}}>"Accept Window"</b> in the table below.
+        </div>
+      </div>
+      <div style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:12,padding:"14px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <span style={{fontSize:20,fontWeight:800,color:"#92400e"}}>{ssCount}</span>
+          <div style={{fontWeight:800,fontSize:12,color:"#92400e"}}>Self-Service Remediation</div>
+          <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:"#fffbeb",color:"#92400e",border:"1px solid #fde68a"}}>Highest Control</span>
+        </div>
+        <div style={{fontSize:11,color:"#b45309",lineHeight:1.6}}>
+          {ssCount>0?`${ssCount} instance${ssCount!==1?"s":""} can be relocated ahead of the window so you control the timing.`:"No instances currently assigned to self-service strategies."}
+          {" "}Tradeoffs include OOC capacity risk and potential over-provisioning cost. Rows marked <b style={{color:"#92400e"}}>"Self-Service"</b> below.
+        </div>
+      </div>
+    </div>
+
+    {/* Full comparison table — all strategies */}
+    <div style={{overflowX:"auto",borderRadius:10,border:"1px solid #e7dfdb"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+        <thead><tr style={{background:"#f8f6f4"}}>
+          {["","Strategy","Approach","Your Fleet","Downtime","Extra Cost","OOC Risk","Complexity","Rationale"].map(h=><th key={h} style={{...td,textAlign:"left",fontWeight:700,color:"#5f5956",fontSize:10,borderBottom:"1px solid #e7dfdb"}}>{h}</th>)}
+        </tr></thead>
+        <tbody>
+          {allRows.map((r,i)=>{
+            const cnt=strategies.filter(s=>s.strategy.id===r.id).length;
+            const isActive=activeIds.has(r.id);
+            return(<tr key={i} style={{borderBottom:i<allRows.length-1?"1px solid #f2ebe7":"none",opacity:isActive?1:0.55}}>
+              <td style={{...td,fontSize:16}}>{r.icon}</td>
+              <td style={{...td,fontWeight:700,color:r.color}}>{r.label}</td>
+              <td style={td}><span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:r.approach==="accept"?"#f0fdf4":"#fffbeb",color:r.approach==="accept"?"#166534":"#92400e",border:`1px solid ${r.approach==="accept"?"#86efac":"#fde68a"}`}}>{r.approach==="accept"?"Accept Window":"Self-Service"}</span></td>
+              <td style={{...td,fontWeight:800,fontSize:13}}>{isActive?cnt:<span style={{color:"#b0a8a2",fontWeight:400}}>—</span>}</td>
+              <td style={td}>{r.down}</td>
+              <td style={{...td,color:r.costColor||"#5f5956",fontWeight:600}}>{r.cost}</td>
+              <td style={{...td,color:r.oocColor||"#5f5956",fontWeight:r.oocColor?600:400}}>{r.ooc}</td>
+              <td style={{...td,color:r.complexityColor||"#5f5956",fontWeight:r.complexityColor?600:400}}>{r.complexity}</td>
+              <td style={{...td,fontSize:10,color:"#8a7f79",maxWidth:200}}>{r.rationale}</td>
+            </tr>);
+          })}
+        </tbody>
+      </table>
+    </div>
+
+    {/* Strategy Legend */}
+    <div style={{marginTop:20,background:"#fff",borderRadius:12,padding:"18px 20px",border:"1px solid #e7dfdb"}}>
+      <div style={{fontWeight:800,fontSize:13,marginBottom:4,color:"#1f1b1a"}}>Strategy Reference Guide</div>
+      <p style={{fontSize:11,color:"#8a7f79",margin:"0 0 14px 0"}}>Seven remediation strategies based on instance shape, workload type, and fleet topology. The strategy engine automatically classifies each scheduled instance.</p>
+      {[
+        {icon:"🔧",label:"Bare Metal — Self-Service Update",color:"#0891b2",when:"Bare Metal shapes (BM.*)",cost:"None — customer controls timing",why:"BM instances are self-service. The customer executes the firmware update at whatever time they choose. No Oracle-initiated reboot. No OOC risk."},
+        {icon:"🛡",label:"Wait + NVMe Backup",color:"#dc2626",when:"DenseIO shapes with local NVMe storage",cost:"None — accept the ~20 min reboot window",why:"Stop/Start permanently destroys NVMe data. Only safe strategy for DenseIO. Back up NVMe before the window, accept the reboot, verify data after."},
+        {icon:"⎈",label:"OKE: Drain, Kill/Replace, or Node Cycling",color:"#7c3aed",when:"OKE worker nodes (detected by name or freeform tags)",cost:"Drain: None. Kill/Replace: brief overlap. Node Cycling: brief surge overlap",why:"Four options: Cordon+Drain (wait), Kill/Replace (autoscaler, field-validated at 204 VMs), Stop/Start, or Node Cycling (OKE-native maxSurge — OKE handles everything). Scheduled hosts are closed for placement, so replacements land on clean hosts."},
+        {icon:"↗",label:"FD Move (~10-Day Buffer)",color:"#2563eb",when:"Instance has peers in other fault domains within the same compartment and region",cost:"None — instance reboots during the FD change",why:"Moving to a different FD clears the maintenance event. New host gets a fresh ~10-day notification window. Peers in other FDs maintain workload availability. PROCESSING status after move is a known bug — clears to CANCELED."},
+        {icon:"⟳",label:"Stop/Start (~10-Day Buffer)",color:"#d97706",when:"Instance has peers but all in the same fault domain. NOT for GPU or DenseIO shapes.",cost:"None, but OOC capacity risk — instance stranded if no capacity",why:"Stop then Start moves to a new host on your schedule. New host gets a fresh ~10-day notification window if it needs future maintenance. Original host closed for placement after stop. Do NOT use Force Reboot — stays on same host. GPU shapes: NEVER use this — extreme OOC risk, use Over-Provision instead."},
+        {icon:"📦",label:"Over-Provision → Cutover",color:"#b45309",when:"Singleton instance with no peers, or GPU shapes where Stop/Start is too risky",cost:"Duplicate instance cost until cutover completes",why:"No peers means no availability during any move. Provision replacement first, validate, cut traffic, then decommission original. Also the recommended path for GPU shapes due to extreme OOC risk of Stop/Start."},
+      ].map(s=>(
+        <div key={s.label} style={{border:`1px solid ${s.color}22`,borderLeft:`4px solid ${s.color}`,borderRadius:10,padding:"12px 16px",marginBottom:10,background:`${s.color}04`}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+            <span style={{fontSize:18}}>{s.icon}</span>
+            <span style={{fontWeight:800,fontSize:13,color:s.color}}>{s.label}</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"3px 12px",fontSize:11,marginLeft:26}}>
+            <span style={{fontWeight:700,color:"#5f5956"}}>When:</span><span style={{color:"#5f5956",lineHeight:1.5}}>{s.when}</span>
+            <span style={{fontWeight:700,color:"#5f5956"}}>Cost:</span><span style={{color:"#5f5956",lineHeight:1.5}}>{s.cost}</span>
+            <span style={{fontWeight:700,color:"#5f5956"}}>Why:</span><span style={{color:"#5f5956",lineHeight:1.5}}>{s.why}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>);
+}
+
+// ─── Tab: Action Center ───
+function TabActions({strategies, instances, isImported}){
+  const[actionState,setActionState]=useState({});
+  const[regionFilter,setRegionFilter]=useState("all");
+  const[selected,setSelected]=useState(new Set());
+  const[executing,setExecuting]=useState(false);
+  const[liveMode,setLiveMode]=useState(false);
+  const[showConfirm,setShowConfirm]=useState(false);
+  const effectiveLive=liveMode&&!isImported;
+  const eligible=strategies.filter(s=>["fd_move_buffer","stop_start"].includes(s.strategy.id));
+  const regions=[...new Set(eligible.map(i=>i.Region))].sort();
+  const filtered=regionFilter==="all"?eligible:eligible.filter(i=>i.Region===regionFilter);
+  const fdMoves=filtered.filter(s=>s.strategy.id==="fd_move_buffer");
+  const stopStarts=filtered.filter(s=>s.strategy.id==="stop_start");
+  const ALL_FDS=["FAULT-DOMAIN-1","FAULT-DOMAIN-2","FAULT-DOMAIN-3"];
+  const doneCount=filtered.filter(i=>actionState[i.ID]?.status==="done").length;
+  const errorCount=filtered.filter(i=>actionState[i.ID]?.status==="error").length;
+  const runningCount=filtered.filter(i=>actionState[i.ID]?.status==="executing").length;
+  const pendingInView=filtered.filter(i=>!actionState[i.ID]||actionState[i.ID].status==="error");
+  const selectedInView=filtered.filter(i=>selected.has(i.ID));
+  const selectedPending=selectedInView.filter(i=>!actionState[i.ID]||actionState[i.ID].status==="error");
+  const allInViewSelected=filtered.length>0&&filtered.every(i=>selected.has(i.ID));
+
+  function getTargetFD(inst){
+    const current=inst.Fault_Domain;
+    const peers=instances.filter(i=>i.Region===inst.Region&&shortAD(i.Availability_Domain)===shortAD(inst.Availability_Domain)&&i.ID!==inst.ID);
+    const usedFDs=new Set([current,...peers.map(p=>p.Fault_Domain)]);
+    const available=ALL_FDS.filter(f=>!usedFDs.has(f));
+    if(available.length>0)return available[0];
+    return ALL_FDS.find(f=>f!==current)||current;
+  }
+
+  function toggleSelect(id){setSelected(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});}
+  function toggleSelectAll(){
+    if(allInViewSelected){setSelected(p=>{const n=new Set(p);filtered.forEach(i=>n.delete(i.ID));return n;});}
+    else{setSelected(p=>{const n=new Set(p);filtered.forEach(i=>n.add(i.ID));return n;});}
+  }
+
+  async function executeFDMove(inst){
+    const targetFD=getTargetFD(inst);
+    setActionState(p=>({...p,[inst.ID]:{status:"executing",msg:"Initiating FD move..."}}));
+    try{
+      const res=await fetch("/api/maintenance/fd-move",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({instanceId:inst.ID,targetFaultDomain:targetFD,rebootAction:"SOFTRESET"})});
+      const data=await res.json();
+      if(data.success){setActionState(p=>({...p,[inst.ID]:{status:"done",msg:data.message||`Moved to ${shortFD(targetFD)}`}}));}
+      else{setActionState(p=>({...p,[inst.ID]:{status:"error",msg:data.error||"FD move failed"}}));}
+    }catch(e){setActionState(p=>({...p,[inst.ID]:{status:"error",msg:e.message}}));}
+  }
+
+  async function executeBatch(batch){
+    setExecuting(true);
+    for(const inst of batch){await executeFDMove(inst);await new Promise(r=>setTimeout(r,1000));}
+    setExecuting(false);
+  }
+
+  const statusColors={executing:"#d97706",done:"#16a34a",error:"#dc2626"};
+  const statusBg={executing:"#fffbeb",done:"#f0fdf4",error:"#fef2f2"};
+  const cbStyle={width:15,height:15,accentColor:"#c74634",cursor:"pointer"};
+
+  return(<div>
+    {showConfirm && (<div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}} onClick={()=>setShowConfirm(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:"28px 32px",maxWidth:420,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#fef2f2,#fee2e2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>⚠</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#1f1b1a"}}>Switch to Live Mode</div>
+        </div>
+        <div style={{fontSize:12,color:"#5f5956",lineHeight:1.7,marginBottom:20}}>
+          <div>Actions will execute real changes on OCI infrastructure.</div>
+          <div style={{marginTop:6}}>Instances will be rebooted during FD moves. This cannot be undone.</div>
+        </div>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <button onClick={()=>setShowConfirm(false)} style={{padding:"8px 22px",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",background:"#f2ebe7",color:"#5f5956",border:"none"}}>Cancel</button>
+          <button onClick={()=>{setLiveMode(true);setShowConfirm(false);}} style={{padding:"8px 22px",borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",background:"linear-gradient(135deg,#c74634,#9f3022)",color:"#fff",border:"none",boxShadow:"0 3px 10px rgba(199,70,52,0.35)"}}>Switch to Live Mode</button>
+        </div>
+      </div>
+    </div>)}
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+      <h2 style={{...S.h2,marginBottom:0}}>Action Center</h2>
+      <span style={{fontSize:10,fontWeight:800,padding:"3px 10px",borderRadius:6,letterSpacing:"0.08em",background:effectiveLive?"linear-gradient(135deg,#dc2626,#b91c1c)":"linear-gradient(135deg,#2563eb,#1d4ed8)",color:"#fff",userSelect:"none"}}>{effectiveLive?"LIVE":"DRY RUN"}</span>
+    </div>
+    <p style={S.desc}>{effectiveLive
+      ?"Live execution mode. Select instances and execute FD migrations. Each action calls the OCI API to move the instance and trigger a softreset."
+      :"Dry-run preview of the FD migration plan. Review the planned FD relocations before switching to live execution mode."
+    }</p>
+
+    {/* Mode banner */}
+    <div style={{background:effectiveLive?"linear-gradient(135deg,#fef3c7,#fde68a)":"linear-gradient(135deg,#eff6ff,#dbeafe)",border:effectiveLive?"2px solid #f59e0b":"2px solid #93c5fd",borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",gap:10}}>
+      <div style={{fontSize:22}}>{effectiveLive?"⚠":"ℹ"}</div>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:800,fontSize:13,color:effectiveLive?"#92400e":"#1e40af"}}>
+          {effectiveLive?"Live Execution — Actions modify OCI infrastructure directly":"Dry Run — No changes are being made"}
+        </div>
+        <div style={{fontSize:11,color:effectiveLive?"#b45309":"#3b82f6",lineHeight:1.6,marginTop:2}}>
+          {effectiveLive
+            ?"Each FD move triggers an instance reboot (~2-5 min). Hosts scheduled for maintenance are closed for placement — moved instances land on clean hosts. OOC capacity risk: if no capacity in the target FD, the instance is stranded in STOPPED state (NOT deleted — it still exists but cannot restart until capacity frees up). GPU and DenseIO shapes are excluded."
+            :"This is a read-only preview. The target fault domain is auto-selected to avoid occupied FDs. Moving to a different FD clears the maintenance event and buys a fresh ~10-day notification window. Hosts scheduled for maintenance are closed for placement."
+          }
+        </div>
+      </div>
+    </div>
+
+    {!isImported && !effectiveLive ? (
+      <div style={{marginBottom:16}}><button onClick={()=>setShowConfirm(true)} style={{fontSize:10,fontWeight:800,color:"#fff",background:"linear-gradient(135deg,#c74634,#9f3022)",border:"none",borderRadius:8,padding:"8px 24px",cursor:"pointer",letterSpacing:"0.06em",textTransform:"uppercase",boxShadow:"0 3px 10px rgba(199,70,52,0.35)"}}>SWITCH TO LIVE MODE</button></div>
+    ) : effectiveLive ? (
+      <div style={{marginBottom:16}}><button onClick={()=>setLiveMode(false)} style={{fontSize:10,fontWeight:800,color:"#1e40af",background:"#fff",border:"1.5px solid #93c5fd",borderRadius:8,padding:"7px 22px",cursor:"pointer",letterSpacing:"0.06em",textTransform:"uppercase"}}>SWITCH BACK TO DRY RUN</button></div>
+    ) : null}
+
+    {/* Summary cards */}
+    <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+      <div style={{...S.card,borderTop:"3px solid #2563eb"}}><div style={S.cL}>FD Move</div><div style={S.cV("#2563eb")}>{fdMoves.length}</div><div style={S.cS}>Peers in other FDs</div></div>
+      <div style={{...S.card,borderTop:"3px solid #d97706"}}><div style={S.cL}>Stop/Start</div><div style={S.cV("#d97706")}>{stopStarts.length}</div><div style={S.cS}>Same FD peers</div></div>
+      {effectiveLive&&<div style={{...S.card,borderTop:"3px solid #0891b2"}}><div style={S.cL}>Selected</div><div style={S.cV("#0891b2")}>{selectedInView.length}</div><div style={S.cS}>of {filtered.length} in view</div></div>}
+      {effectiveLive&&<div style={{...S.card,borderTop:"3px solid #16a34a"}}><div style={S.cL}>Completed</div><div style={S.cV("#16a34a")}>{doneCount}</div></div>}
+      {effectiveLive&&<div style={{...S.card,borderTop:"3px solid #dc2626"}}><div style={S.cL}>Errors</div><div style={S.cV("#dc2626")}>{errorCount}</div></div>}
+    </div>
+
+    {/* Region filter — always visible */}
+    <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:10,fontWeight:700,color:"#8a7f79",textTransform:"uppercase",letterSpacing:"0.06em"}}>Region:</span>
+        <select value={regionFilter} onChange={e=>setRegionFilter(e.target.value)} style={{fontSize:11,padding:"5px 10px",borderRadius:7,border:"1px solid #e7dfdb",background:"#fff",cursor:"pointer"}}>
+          <option value="all">All Regions ({eligible.length})</option>
+          {regions.map(r=><option key={r} value={r}>{r} ({eligible.filter(i=>i.Region===r).length})</option>)}
+        </select>
+      </div>
+      <span style={{fontSize:11,color:"#8a7f79"}}>{filtered.length} instance{filtered.length!==1?"s":""}{effectiveLive?"":" · dry run"}</span>
+    </div>
+
+    {/* Empty state */}
+    {filtered.length===0&&<div style={{background:"#f0fdf4",borderRadius:12,padding:"20px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:700,color:"#16a34a"}}>No instances eligible for FD migration{regionFilter!=="all"?` in ${regionFilter}`:""}</div><div style={{fontSize:12,color:"#15803d",marginTop:4}}>Scheduled instances are DenseIO (NVMe risk), OKE (use drain/replace), GPU (extreme OOC), or Bare Metal (self-service).</div></div>}
+
+    {/* Migration table */}
+    {filtered.length>0&&<div style={{background:"linear-gradient(135deg,#eff6ff,#dbeafe)",border:"1.5px solid #93c5fd",borderRadius:12,padding:"14px 18px",marginBottom:12}}>
+      <div style={{fontSize:12,fontWeight:800,color:"#1e3a8a",marginBottom:10}}>What You Need to Know Before an FD Move</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div style={{background:"#fff",borderRadius:8,padding:"10px 12px",border:"1px solid #bfdbfe"}}>
+          <div style={{fontSize:10,fontWeight:800,color:"#16a34a",marginBottom:4}}>Preserved — No Impact</div>
+          <div style={{fontSize:10,color:"#1e40af",lineHeight:1.7}}>
+            {["Private IP, public IP, and all VNIC attachments — unchanged","Boot volumes and block volumes — tied to instance, not host","Security lists, NSGs, and route tables — tied to VCN/subnet","Instance tags (freeform and defined) — preserved","Instance metadata and cloud-init config — preserved","DNS hostnames — unchanged since IP does not change","Load balancer backends — brief health check blip during reboot, auto-recovers"].map((t,i)=><div key={i} style={{display:"flex",gap:4}}><span style={{color:"#16a34a",flexShrink:0}}>✓</span><span>{t}</span></div>)}
+          </div>
+        </div>
+        <div style={{background:"#fff",borderRadius:8,padding:"10px 12px",border:"1px solid #bfdbfe"}}>
+          <div style={{fontSize:10,fontWeight:800,color:"#dc2626",marginBottom:4}}>Risks and Temporary Impact</div>
+          <div style={{fontSize:10,color:"#1e40af",lineHeight:1.7}}>
+            {["~2-5 minute reboot during the FD change — instance is briefly unavailable","OOC capacity risk: if no capacity in target FD for this shape, instance is stranded in STOPPED state — NOT deleted, but cannot restart until capacity frees up. Original host is closed for placement.","A1/A2 (ARM) shapes: constrained host capacity — FD moves may fail even when capacity reports show AVAILABLE. Check per-FD availability first.","Monitoring metrics and alarms: brief gap during reboot window","Instance agent plugins (OS Management, etc.): reconnect automatically after reboot","In-guest backup agents: interrupted during reboot, resume after","Maintenance status may show PROCESSING briefly — known compute bug, clears to CANCELED"].map((t,i)=><div key={i} style={{display:"flex",gap:4}}><span style={{color:i<=2?"#dc2626":"#d97706",flexShrink:0}}>{i<=2?"✗":"⚠"}</span><span>{t}</span></div>)}
+          </div>
+        </div>
+      </div>
+      <div style={{marginTop:10,fontSize:10,color:"#1e40af",lineHeight:1.6,background:"#fff",borderRadius:8,padding:"8px 12px",border:"1px solid #bfdbfe"}}>
+        <strong style={{color:"#1e3a8a"}}>Why Target FD?</strong> Maintenance is per-host, not per-FD. Changing the fault domain forces a host change. Hosts scheduled for maintenance are closed for placement, so the new host is guaranteed to have no pending maintenance. The specific target FD does not matter — what matters is leaving the current host.
+      </div>
+    </div>}
+
+    {/* Action controls — right above table, SE only */}
+    {filtered.length>0&&effectiveLive&&<div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap",background:"#fff",border:"1px solid #e7dfdb",borderRadius:10,padding:"8px 14px"}}>
+      <button onClick={toggleSelectAll} style={{padding:"5px 14px",borderRadius:8,fontSize:10,fontWeight:700,cursor:"pointer",background:allInViewSelected?"#f2ebe7":"#fff",color:"#5f5956",border:"1px solid #e7dfdb"}}>{allInViewSelected?"Deselect All":"Select All"} ({filtered.length})</button>
+      {selectedPending.length>0&&<button onClick={()=>executeBatch(selectedPending)} disabled={executing} style={{padding:"6px 18px",borderRadius:8,fontSize:11,fontWeight:800,cursor:executing?"wait":"pointer",background:executing?"#d97706":"linear-gradient(180deg,#2563eb,#1d4ed8)",color:"#fff",border:"none"}}>
+        {executing?`Executing (${runningCount})...`:`Execute Selected (${selectedPending.length})`}
+      </button>}
+      {pendingInView.length>0&&<button onClick={()=>executeBatch(pendingInView)} disabled={executing} style={{padding:"6px 18px",borderRadius:8,fontSize:11,fontWeight:800,cursor:executing?"wait":"pointer",background:executing?"#d97706":"linear-gradient(180deg,#c74634,#9f3022)",color:"#fff",border:"none"}}>
+        {executing?`Executing (${runningCount})...`:`Execute All (${pendingInView.length})`}
+      </button>}
+      {selectedInView.length>0&&<span style={{fontSize:11,color:"#0891b2",fontWeight:700,marginLeft:"auto"}}>{selectedInView.length} selected</span>}
+    </div>}
+
+    {/* Progress bar — SE only */}
+    {effectiveLive&&(doneCount>0||errorCount>0||runningCount>0)&&<div style={{marginBottom:10}}>
+      <div style={{display:"flex",gap:2,height:6,borderRadius:3,overflow:"hidden",background:"#f2ebe7"}}>
+        <div style={{width:`${(doneCount/Math.max(filtered.length,1))*100}%`,background:"#22c55e",borderRadius:3,transition:"width 0.3s"}}/>
+        <div style={{width:`${(errorCount/Math.max(filtered.length,1))*100}%`,background:"#ef4444",borderRadius:3,transition:"width 0.3s"}}/>
+        <div style={{width:`${(runningCount/Math.max(filtered.length,1))*100}%`,background:"#f59e0b",borderRadius:3,transition:"width 0.3s",animation:"pulse 2s infinite"}}/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8a7f79",marginTop:4}}>
+        <span>{doneCount} done, {errorCount} error{errorCount!==1?"s":""}, {filtered.length-doneCount-errorCount} remaining</span>
+        <span>{Math.round((doneCount/Math.max(filtered.length,1))*100)}% complete</span>
+      </div>
+    </div>}
+
+    {filtered.length>0&&<div style={{overflowX:"auto",borderRadius:10,border:"1px solid #e7dfdb"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+        <thead><tr style={{background:"#f8f6f4"}}>
+          {effectiveLive&&<th style={{padding:"8px 6px 8px 10px",width:28,borderBottom:"1px solid #e7dfdb"}}><input type="checkbox" checked={allInViewSelected} onChange={toggleSelectAll} style={cbStyle}/></th>}
+          {["Instance","Shape","Region","AD","Current FD","Target FD","Window (UTC)","Strategy","Status",effectiveLive?"Action":""].map(h=><th key={h} style={{padding:"8px 10px",textAlign:"left",fontWeight:700,color:"#5f5956",fontSize:10,borderBottom:"1px solid #e7dfdb"}}>{h}</th>)}
+        </tr></thead>
+        <tbody>
+          {filtered.map((inst,i)=>{
+            const tgt=getTargetFD(inst);const st=actionState[inst.ID];const stColor=st?statusColors[st.status]:"#5f5956";const isSel=selected.has(inst.ID);
+            return(<tr key={inst.ID} className={isSel&&effectiveLive&&(!st||st.status==="error")?"mc-row-sel":"mc-row"} onClick={effectiveLive&&!executing&&(!st||st.status==="error")?()=>toggleSelect(inst.ID):undefined} style={{borderBottom:i<filtered.length-1?"1px solid #f2ebe7":"none",background:st?statusBg[st.status]:isSel&&effectiveLive?"#f0f7ff":"transparent",cursor:effectiveLive&&(!st||st.status==="error")?"pointer":"default",transition:"background 0.15s"}}>
+              {effectiveLive&&<td style={{padding:"8px 6px 8px 10px",width:28}} onClick={e=>e.stopPropagation()}>{(!st||st.status==="error")?<input type="checkbox" checked={isSel} onChange={()=>toggleSelect(inst.ID)} style={cbStyle}/>:null}</td>}
+              <td style={{padding:"8px 10px"}}><div style={{fontWeight:700}}>{inst.Display_Name}</div>{st&&st.msg&&<div style={{fontSize:9,color:stColor,marginTop:2,maxWidth:220,lineHeight:1.3}}>{st.msg}</div>}</td>
+              <td style={{padding:"8px 10px",color:"#5f5956"}}>{inst.Shape}</td>
+              <td style={{padding:"8px 10px",color:"#5f5956"}}>{inst.Region}</td>
+              <td style={{padding:"8px 10px",color:"#5f5956"}}>{shortAD(inst.Availability_Domain)}</td>
+              <td style={{padding:"8px 10px",fontWeight:700,color:"#dc2626"}}>{shortFD(inst.Fault_Domain)}</td>
+              <td style={{padding:"8px 10px",fontWeight:700,color:"#16a34a"}}>{shortFD(tgt)}</td>
+              <td style={{padding:"8px 10px",color:"#5f5956"}}>{inst.Maintenance_UTC||"TBD"}</td>
+              <td style={{padding:"8px 10px"}}><span style={{fontSize:10,fontWeight:700,color:inst.strategy.color}}>{inst.strategy.icon} {inst.strategy.short||inst.strategy.label.split("(")[0].trim()}</span></td>
+              <td style={{padding:"8px 10px"}}>{st?<span style={{fontSize:10,fontWeight:700,color:stColor}}>{st.status==="executing"?"⏳ Running...":st.status==="done"?"✓ Done":"✗ Error"}</span>:<span style={{fontSize:10,fontWeight:600,color:effectiveLive?"#8a7f79":"#3b82f6"}}>{effectiveLive?"Ready":"Planned"}</span>}</td>
+              {effectiveLive&&<td style={{padding:"8px 10px"}} onClick={e=>e.stopPropagation()}>{(!st||st.status==="error")&&!executing?<button onClick={()=>executeFDMove(inst)} style={{padding:"4px 12px",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",background:"#c74634",color:"#fff",border:"none"}}>Execute</button>:null}</td>}
+            </tr>);
+          })}
+        </tbody>
+      </table>
+    </div>}
+
+    {/* Post-execution note */}
+    {effectiveLive&&doneCount>0&&<div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:"10px 14px",marginTop:10,display:"flex",alignItems:"center",gap:8}}>
+      <span style={{fontSize:14}}>✓</span>
+      <div style={{fontSize:11,color:"#166534",lineHeight:1.5}}>
+        <strong>{doneCount} instance{doneCount!==1?"s":""} moved successfully.</strong> Instances remain in this list until the next data refresh. Click <strong>Refresh Data</strong> at the top of the page to update fleet data — moved instances should show new fault domains and cleared maintenance status. Maintenance status may briefly show PROCESSING before clearing to CANCELED.
+      </div>
+    </div>}
+
+  </div>);
+}
+
+// ─── Tab: Export ───
+function TabExport({analysis, seMode}){
+  const{scheduled,instances,denseSched,okeSched,gaps,strategies}=analysis;
+  const gpuSched=scheduled.filter(i=>isGPU(i.Shape));
+  const bmSched=scheduled.filter(i=>isBM(i.Shape));
+  const[toast,setToast]=useState(null);
+  const[nameModal,setNameModal]=useState(null);
+  const[nameInput,setNameInput]=useState("");
+  const showToast=(msg,type)=>{setToast({msg,type});setTimeout(()=>setToast(null),4000);};
+  const dl=(content,name,type)=>{const b=new Blob([content],{type});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;a.click();};
+  const genCSV=()=>{const h=["Instance","OCID","Shape","Region","AD","FD","Compartment","Maintenance UTC","Strategy","DenseIO","OKE","GPU","Bare Metal","Stop/Start Safe"];const rows=strategies.map(i=>[i.Display_Name,i.ID,i.Shape,i.Region,shortAD(i.Availability_Domain),shortFD(i.Fault_Domain),i.Compartment_Name,i.Maintenance_UTC||"",i.strategy.label,isDense(i.Shape)?"YES":"",isOKE(i)?"YES":"",isGPU(i.Shape)?"YES":"",isBM(i.Shape)?"YES":"",isDense(i.Shape)||isGPU(i.Shape)?"NO":isBM(i.Shape)?"SELF-SERVICE":"YES (OOC risk)"]);dl([h,...rows].map(r=>r.map(c=>`"${(c||"").replace(/"/g,'""')}"`).join(",")).join("\n"),`maintenance_report_${new Date().toISOString().slice(0,10)}.csv`,"text/csv");};
+  const genSummary=()=>{const l=[
+    `MAINTENANCE READINESS SUMMARY`,`Generated: ${new Date().toISOString().replace("T"," ").slice(0,19)} UTC`,`Campaign: Feb 25 - early May 2026`,``,
+    `SCOPE: ${instances.length} instances, ${scheduled.length} scheduled, ${instances.filter(i=>i.reboot_status==="Completed").length} completed`,``,
+    `CRITICAL NOTICES`,
+    `  DR Failover does NOT avoid maintenance — regions are patched concurrently.`,
+    `  Due Date in Console is a bug (60-day default) — only "Scheduled to start" time matters.`,
+    `  PROCESSING status after FD move is a known compute bug — clears to CANCELED.`,
+    `  Hosts scheduled for maintenance are CLOSED for placement.`,``,
+    `SHAPE-SPECIFIC ALERTS`,
+    `  DenseIO scheduled: ${denseSched.length}${denseSched.length?" — BACK UP NVMe, DO NOT STOP/START":""}`,
+    `  OKE nodes scheduled: ${okeSched.length}${okeSched.length?" — CORDON/DRAIN, KILL/REPLACE, or NODE CYCLING":""}`,
+    `  GPU scheduled: ${gpuSched.length}${gpuSched.length?" — DO NOT STOP/START, extreme OOC risk":""}`,
+    `  Bare Metal scheduled: ${bmSched.length}${bmSched.length?" — SELF-SERVICE, customer controls timing":""}`,``,
+    `STRATEGY ASSIGNMENTS`,
+    ...strategies.map(s=>`  ${s.strategy.icon} ${(s.Display_Name||"").padEnd(28)} ${s.strategy.label.padEnd(34)} ${s.Maintenance_UTC||"TBD"}`),``,
+    `SELF-SERVICE REMEDIATION (Field-Validated)`,
+    `  Stop/Start: moves VM to new host, clears maintenance. Fresh ~10-day window. OOC risk. NOT for GPU or DenseIO.`,
+    `  FD Move: edit instance → change FD. ~10-day buffer. OOC risk. PROCESSING status is a known bug.`,
+    `  OKE Kill/Replace: terminate node, autoscaler provisions clean host. Validated at 204 VMs.`,
+    `  OKE Node Cycling: set maxSurge, trigger Cycle Nodes. OKE-native, zero downtime.`,
+    `  Bare Metal: self-service — customer executes firmware update at chosen time.`,
+    `  Force Reboot: DOES NOT WORK — stays on same host.`,
+    `  Capacity Reservations: do NOT protect against OOC — CR does not tie to a hypervisor.`,``,
+    `RESILIENCY FINDINGS (${gaps.length})`,
+    ...gaps.map((g,i)=>`  ${i+1}. [${g.severity.toUpperCase()}] ${g.title}`),``,
+    `POST-MAINTENANCE SUPPORT`,
+    `  SR template: "Instance issue after Compute Maintenance" + CN REF (e.g. COMPUTE-100847)`,
+    `  Block volume backups (OCI native) are unaffected. In-guest agent backups ARE affected.`,
+    `  Stopped VMs remain stopped — Oracle does not start them during maintenance.`,
+  ];dl(l.join("\n"),`maintenance_readiness_${new Date().toISOString().slice(0,10)}.txt`,"text/plain");};
+  return(<div>
+    <h2 style={S.h2}>Export Reports</h2>
+    <p style={S.desc}>Customer-ready downloads with strategy assignments, risk flags, and remediation guidance.</p>
+    <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
+      <button onClick={genCSV} style={{padding:"12px 22px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",background:"#c74634",color:"#fff",border:"none"}}>Download CSV ({strategies.length} instances)</button>
+      <button onClick={genSummary} style={{padding:"12px 22px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",background:"#1f1b1a",color:"#fff",border:"none"}}>Download Readiness Summary</button>
+      <button onClick={()=>{setNameModal({action:"export"});setNameInput("");}} style={{padding:"12px 22px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",background:"#2563eb",color:"#fff",border:"none"}}>Download Customer Bundle</button>
+    </div>
+    <div style={{fontSize:11,color:"#5f5956",marginBottom:20,lineHeight:1.6}}>
+      <strong>Customer Bundle</strong> packages fleet data, shapes, opportunities, and announcements into a single file. No credentials or API keys are included. Share this file with your Oracle team so they can review your full tenancy posture independently.
+    </div>
+    <div style={{background:"#1b1715",color:"#f7f4f2",borderRadius:10,padding:"14px 16px",fontFamily:"SFMono-Regular,Consolas,monospace",fontSize:10,lineHeight:1.7,overflowX:"auto",maxHeight:280}}>
+      <div style={{color:"#6b6560"}}>Instance, Region, FD, Maintenance, Strategy, Flags</div>
+      {strategies.map(i=>(<div key={i.ID}><span>{i.Display_Name}</span><span style={{color:"#8a7f79"}}>, {i.Region}, {shortFD(i.Fault_Domain)}, {i.Maintenance_UTC||"TBD"}</span><span style={{color:i.strategy.color}}>, {i.strategy.label}</span>{isDense(i.Shape)&&<span style={{color:"#ef4444"}}>, NVMe</span>}{isOKE(i)&&<span style={{color:"#a78bfa"}}>, OKE</span>}</div>))}
+    </div>
+
+    {/* Import Customer Bundle — SE only */}
+    {seMode && <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #e7dfdb"}}>
+      <h2 style={S.h2}>Import Customer Bundle</h2>
+      <p style={S.desc}>Load a customer bundle to review their maintenance posture. The bundle is saved to the server for future access from the customer picker.</p>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        <label style={{padding:"12px 22px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",background:"#16a34a",color:"#fff",border:"none",display:"inline-block"}}>
+          Import Bundle
+          <input type="file" accept=".json" style={{display:"none"}} onChange={async(e)=>{
+            const f=e.target.files[0];
+            if(!f)return;
+            try{
+              const text=await f.text();
+              const bundle=JSON.parse(text);
+              if(!bundle.fleet_data){showToast("Invalid bundle - missing fleet_data.","error");e.target.value="";return;}
+              setNameModal({bundle});setNameInput(bundle.customerName||"");e.target.value="";return;
+            }catch(err){showToast("Import failed: "+err.message,"error");}
+            e.target.value="";
+          }}/>
+        </label>
+        <span style={{fontSize:11,color:"#8a7f79"}}>Saved to server. Access anytime from the customer picker.</span>
+      </div>
+    </div>}
+
+    {/* Toast notification */}
+    {toast && (<div style={{position:"fixed",bottom:24,right:24,zIndex:9999,padding:"12px 20px",borderRadius:12,fontSize:12,fontWeight:700,color:"#fff",background:toast.type==="success"?"#16a34a":"#dc2626",boxShadow:"0 8px 30px rgba(0,0,0,0.2)",animation:"slideUp 0.3s ease",maxWidth:400}}>{toast.msg}</div>)}
+
+    {/* Name input modal — used for both export and import */}
+    {nameModal && (<div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}} onClick={()=>setNameModal(null)}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:"28px 32px",maxWidth:420,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+        <div style={{fontSize:16,fontWeight:800,color:"#1f1b1a",marginBottom:8}}>{nameModal.action==="export"?"Export Customer Bundle":"Import Customer Bundle"}</div>
+        <div style={{fontSize:12,color:"#5f5956",marginBottom:16}}>{nameModal.action==="export"?"Enter the customer organization name. This will be used as the filename and in the customer picker when imported.":"Enter a name for this customer. This will be used in the customer picker."}</div>
+        <input value={nameInput} onChange={e=>setNameInput(e.target.value)} onKeyDown={async(e)=>{if(e.key==="Enter"&&nameInput.trim()){const name=nameInput.trim();setNameModal(null);if(nameModal.action==="export"){try{const r=await fetch(window.__ACTIVE_CUSTOMER?"/api/customers/load?name="+encodeURIComponent(window.__ACTIVE_CUSTOMER):"/api/export/bundle");if(!r.ok)throw new Error("Server returned "+r.status);const b=await r.json();b.customerName=name;dl(JSON.stringify(b,null,2),name.replace(/\s+/g,"_")+"_bundle_"+new Date().toISOString().slice(0,10)+".json","application/json");showToast("Bundle downloaded as "+name,"success");}catch(err){showToast("Export failed: "+err.message,"error");}}else{const bundle={...nameModal.bundle,customerName:name};try{const res=await fetch("/api/customers/import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bundle)});const result=await res.json();if(result.success){showToast("Imported "+result.customerName+" ("+result.savedFiles.length+" files). Select from the customer picker.","success");if(window.__refreshCustomers)window.__refreshCustomers();}else{showToast("Import failed: "+(result.error||"Unknown error"),"error");}}catch(err){showToast("Import failed: "+err.message,"error");}}}}} placeholder="e.g. Acme Corp" autoFocus style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"1.5px solid #e7dfdb",fontSize:13,marginBottom:16,boxSizing:"border-box"}}/>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <button onClick={()=>setNameModal(null)} style={{padding:"8px 22px",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",background:"#f2ebe7",color:"#5f5956",border:"none"}}>Cancel</button>
+          <button onClick={async()=>{if(!nameInput.trim())return;const name=nameInput.trim();setNameModal(null);if(nameModal.action==="export"){try{const r=await fetch(window.__ACTIVE_CUSTOMER?"/api/customers/load?name="+encodeURIComponent(window.__ACTIVE_CUSTOMER):"/api/export/bundle");if(!r.ok)throw new Error("Server returned "+r.status);const b=await r.json();b.customerName=name;dl(JSON.stringify(b,null,2),name.replace(/\s+/g,"_")+"_bundle_"+new Date().toISOString().slice(0,10)+".json","application/json");showToast("Bundle downloaded as "+name,"success");}catch(err){showToast("Export failed: "+err.message,"error");}}else{const bundle={...nameModal.bundle,customerName:name};try{const res=await fetch("/api/customers/import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bundle)});const result=await res.json();if(result.success){showToast("Imported "+result.customerName+" ("+result.savedFiles.length+" files). Select from the customer picker.","success");if(window.__refreshCustomers)window.__refreshCustomers();}else{showToast("Import failed: "+(result.error||"Unknown error"),"error");}}catch(err){showToast("Import failed: "+err.message,"error");}}}} style={{padding:"8px 22px",borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",background:nameModal.action==="export"?"#2563eb":"#16a34a",color:"#fff",border:"none"}}>{nameModal.action==="export"?"Download":"Import"}</button>
+        </div>
+      </div>
+    </div>)}
+  </div>);
+}
+
+// ─── Main ───
+function MaintenanceCenter(){
+  const[tab,setTab]=useState(()=>{const h=window.location.hash.replace("#","");return h==="actions"?"actions":"gaps";});
+  const[filterRegion,setFilterRegion]=useState("all");
+  const[seMode,setSeMode]=useState(window.__SE_MODE||false);
+  React.useEffect(()=>{window.__SE_MODE=seMode;},[seMode]);
+  const[customers,setCustomers]=useState([]);
+  const[activeCustomer,setActiveCustomer]=useState(window.__ACTIVE_CUSTOMER||null);
+
+  const refreshCustomers=()=>{fetch("/api/customers").then(r=>r.json()).then(d=>setCustomers(d.customers||[])).catch(()=>{});};
+  window.__refreshCustomers=refreshCustomers;
+
+  React.useEffect(()=>{
+    refreshCustomers();
+  },[]);
+
+  const switchCustomer=async(name)=>{
+    if(!name){
+      sessionStorage.removeItem('__activeCustomer');
+      sessionStorage.removeItem('__lastViewedTenancy');
+      window.location.href='./maintenance_center.html';
+      return;
+    }
+    try{
+      const r=await fetch("/api/customers/load?name="+encodeURIComponent(name));
+      const bundle=await r.json();
+      if(bundle.fleet_data){window.__FLEET_DATA=bundle.fleet_data;}
+      window.__ACTIVE_CUSTOMER=name;
+      sessionStorage.setItem('__activeCustomer',name);
+      sessionStorage.setItem('__lastViewedTenancy',name);
+      setActiveCustomer(name);
+      const root=document.getElementById("root");
+      ReactDOM.unmountComponentAtNode(root);
+      ReactDOM.render(React.createElement(MaintenanceCenter),root);
+    }catch(e){console.error("Failed to load customer:",e.message);}
+  };
+  React.useEffect(()=>{const h=e=>{if(e.key==="Escape"&&seMode)setSeMode(false);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[seMode]);
+  const seTapRef=React.useRef({count:0,timer:null});
+  const handleBarTap=useCallback(()=>{
+    if(tab==="actions")return;
+    const r=seTapRef.current;r.count++;
+    if(r.timer)clearTimeout(r.timer);
+    if(r.count>=3){r.count=0;setSeMode(p=>!p);return;}
+    r.timer=setTimeout(()=>{r.count=0;},1200);
+  },[tab]);
+  const analysis=useMemo(()=>analyzeFleet(window.__FLEET_DATA),[]);
+  const{instances,scheduled,completed,notSched,denseSched,okeSched,changed,heatmap,gaps,strategies,timeline,timelineRange,subscribedRegions,tenancyName,generatedAt,regionDetails}=analysis;
+  const regions=useMemo(()=>{const instRegions=[...new Set(instances.map(i=>i.Region))];return[...new Set([...subscribedRegions,...instRegions])].sort();},[instances,subscribedRegions]);
+  const filteredHeatmap=useMemo(()=>filterRegion==="all"?heatmap:{[filterRegion]:heatmap[filterRegion]||{}},[heatmap,filterRegion]);
+
+  const SE_TABS=["strategy","oke","cost","actions"];
+  const TABS=[
+    {id:"strategy",label:"Strategy Picker",se:true},
+    {id:"heatmap",label:"FD Impact Map"},
+    {id:"timeline",label:"Timeline"},
+    {id:"gaps",label:"Resiliency Gaps"},
+    ...(okeSched.length>0?[{id:"oke",label:"OKE Playbook",se:true}]:[]),
+    {id:"cost",label:"Cost Impact",se:true},
+    {id:"export",label:"Export"},
+  ].filter(t=>!t.se||seMode);
+  const activeTab=(TABS.find(t=>t.id===tab)||tab==="actions")?tab:"gaps";
+
+  const genDate = generatedAt ? new Date(generatedAt) : null;
+  const genLabel = genDate ? genDate.toISOString().replace("T"," ").slice(0,16)+" UTC" : "—";
+  const isImported = !!activeCustomer;
+
+  return(
+    <div style={{fontFamily:'"Oracle Sans","OracleSans","Helvetica Neue",Helvetica,Arial,sans-serif',color:"#1f1b1a",maxWidth:1880,margin:"0 auto",padding:"18px 20px"}}>
+
+      {/* ═══ App Header — matches index.html ═══ */}
+      <header style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,background:"rgba(255,255,255,0.96)",padding:"18px 24px",borderRadius:18,border:"1px solid #d7d2cd",borderTop:"2px solid #c74634",boxShadow:"0 1px 2px rgba(22,20,18,0.05), 0 16px 34px rgba(22,20,18,0.06)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:20}}>
+          <div style={{background:"#fff",padding:10,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 14px rgba(0,0,0,0.08)",border:"1px solid #e7dfdb"}}>
+            <img src="https://oracle.gallerycdn.vsassets.io/extensions/oracle/oci-core/1.0.5/1715101068442/Microsoft.VisualStudio.Services.Icons.Default" style={{width:30,height:30,objectFit:"contain"}} alt="OCI"/>
+          </div>
+          <div>
+            <h1 style={{fontSize:"1.5rem",fontWeight:900,letterSpacing:"-0.04em",textTransform:"uppercase",lineHeight:1,margin:0}}>OCI Tenancy Explorer</h1>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:9,fontWeight:900,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.2em"}}>Tenancy-Wide Visibility And Operational Signals</span>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span onClick={()=>{sessionStorage.removeItem('__autoEnterFleet');window.location.href='./index.html';}} style={{fontSize:9,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",padding:"4px 12px",borderRadius:8,background:"rgba(37,99,235,0.08)",color:"#2563eb",border:"1px solid rgba(37,99,235,0.2)",textDecoration:"none",cursor:"pointer",transition:"all 0.15s"}} onMouseEnter={e=>{e.target.style.background="#2563eb";e.target.style.color="#fff";e.target.style.borderColor="#2563eb"}} onMouseLeave={e=>{e.target.style.background="rgba(37,99,235,0.08)";e.target.style.color="#2563eb";e.target.style.borderColor="rgba(37,99,235,0.2)"}}>Home</span>
+                <span style={{color:"#94a3b8",fontSize:9}}>|</span>
+                <a href="./index.html#about" style={{fontSize:9,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",padding:"4px 12px",borderRadius:8,background:"rgba(37,99,235,0.08)",color:"#2563eb",border:"1px solid rgba(37,99,235,0.2)",textDecoration:"none",transition:"all 0.15s"}} onMouseEnter={e=>{e.target.style.background="#2563eb";e.target.style.color="#fff";e.target.style.borderColor="#2563eb"}} onMouseLeave={e=>{e.target.style.background="rgba(37,99,235,0.08)";e.target.style.color="#2563eb";e.target.style.borderColor="rgba(37,99,235,0.2)"}}>About</a>
+                <span style={{color:"#94a3b8",fontSize:9}}>|</span>
+                <span onClick={()=>{sessionStorage.setItem('__autoEnterFleet','1');window.location.href=activeCustomer?'./index.html?customer='+encodeURIComponent(activeCustomer):'./index.html';}} style={{fontSize:9,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",padding:"4px 12px",borderRadius:8,background:"rgba(37,99,235,0.08)",color:"#2563eb",border:"1px solid rgba(37,99,235,0.2)",textDecoration:"none",cursor:"pointer",transition:"all 0.15s"}} onMouseEnter={e=>{e.target.style.background="#2563eb";e.target.style.color="#fff";e.target.style.borderColor="#2563eb"}} onMouseLeave={e=>{e.target.style.background="rgba(37,99,235,0.08)";e.target.style.color="#2563eb";e.target.style.borderColor="rgba(37,99,235,0.2)"}}>Fleet View</span>
+                <span style={{color:"#94a3b8",fontSize:9}}>|</span>
+                <span onClick={()=>{setTab("gaps");history.replaceState(null,"","#");}} style={{fontSize:9,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",padding:"4px 12px",borderRadius:8,background:activeTab!=="actions"?"#c74634":"rgba(199,70,52,0.06)",color:activeTab!=="actions"?"#fff":"#a0908a",border:activeTab!=="actions"?"1px solid #c74634":"1px solid rgba(199,70,52,0.15)",cursor:"pointer",transition:"all 0.15s",boxShadow:activeTab!=="actions"?"0 2px 6px rgba(199,70,52,0.3)":"none"}} onMouseEnter={e=>{if(activeTab==="actions"){e.target.style.background="#c74634";e.target.style.color="#fff";e.target.style.borderColor="#c74634";}}} onMouseLeave={e=>{if(activeTab==="actions"){e.target.style.background="rgba(199,70,52,0.06)";e.target.style.color="#a0908a";e.target.style.borderColor="rgba(199,70,52,0.15)";}}}>Maintenance Center</span>
+                <span style={{color:"#94a3b8",fontSize:9}}>|</span>
+                <span onClick={()=>{setTab("actions");history.replaceState(null,"","#actions");}} style={{fontSize:9,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",padding:"4px 12px",borderRadius:8,background:activeTab==="actions"?"#c74634":"rgba(199,70,52,0.06)",color:activeTab==="actions"?"#fff":"#a0908a",border:activeTab==="actions"?"1px solid #c74634":"1px solid rgba(199,70,52,0.15)",cursor:"pointer",transition:"all 0.15s",boxShadow:activeTab==="actions"?"0 2px 6px rgba(199,70,52,0.3)":"none"}} onMouseEnter={e=>{if(activeTab!=="actions"){e.target.style.background="#c74634";e.target.style.color="#fff";e.target.style.borderColor="#c74634";}}} onMouseLeave={e=>{if(activeTab!=="actions"){e.target.style.background="rgba(199,70,52,0.06)";e.target.style.color="#a0908a";e.target.style.borderColor="rgba(199,70,52,0.15)";}}}>Action Center</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <span onClick={()=>{sessionStorage.removeItem('__autoEnterFleet');window.location.href='./index.html';}} style={{padding:"12px 24px",fontSize:10,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.12em",color:"#5f5956",background:"#f1f5f9",borderRadius:12,textDecoration:"none",border:"none",cursor:"pointer"}}>← Home</span>
+      </header>
+
+      {/* ═══ Portal Masthead — tenancy name + refresh ═══ */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginLeft:4,marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <div onClick={activeTab!=="actions"?handleBarTap:undefined} style={{width:4,height:"2.6rem",borderRadius:9999,background:seMode&&activeTab!=="actions"?"linear-gradient(180deg,#c74634,#c74634)":"linear-gradient(180deg,#c74634,#ebb2a9)",cursor:"default",position:"relative",transition:"all 0.3s"}}>
+            {seMode&&activeTab!=="actions"&&<div style={{position:"absolute",bottom:-3,left:-2,width:8,height:8,borderRadius:"50%",background:"#c74634",opacity:0.6}}/>}
+          </div>
+          <div>
+            <h2 style={{fontSize:"2rem",fontWeight:700,letterSpacing:"-0.03em",lineHeight:1,margin:0,color:"#1e293b"}}>{activeCustomer || tenancyName}</h2>
+            <p style={{fontSize:11,color:"#94a3b8",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.2em",marginTop:5}}>Selected OCI Tenancy</p>
+          </div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {customers.length>0&&<select value={activeCustomer||""} onChange={e=>switchCustomer(e.target.value||null)} style={{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:10,border:"1.5px solid #e7dfdb",background:"#fff",cursor:"pointer",color:activeCustomer?"#2563eb":"#5f5956"}}>
+              <option value="">My Tenancy</option>
+              {customers.map(c=>(<option key={c.name} value={c.name}>{c.name} ({c.instanceCount||0} instances)</option>))}
+            </select>}
+            {!isImported ? (
+              <button onClick={()=>window.location.reload()} style={{background:"#c74634",color:"#fff",padding:"8px 18px",borderRadius:12,fontSize:10,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.12em",border:"none",cursor:"pointer",boxShadow:"0 4px 12px rgba(199,70,52,0.25)"}}>↻ Refresh Data</button>
+            ) : (
+              <span style={{padding:"8px 18px",borderRadius:12,fontSize:10,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.12em",background:"#eff6ff",color:"#2563eb",border:"1.5px solid #93c5fd"}}>Read-Only</span>
+            )}
+          </div>
+          <p style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:isImported?"#2563eb":"#94a3b8",margin:0}}>{isImported?`Viewing: ${activeCustomer}`:`Refreshed: ${genLabel}`}</p>
+        </div>
+      </div>
+
+      {/* ═══ Navigation Tab Bar — Fleet View + Maintenance Center + Action Center (SE) ═══ */}
+      <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.35rem",padding:"0.35rem",border:"1px solid #d7d2cd",borderRadius:14,background:"rgba(255,255,255,0.92)",boxShadow:"0 1px 2px rgba(22,20,18,0.04)",marginBottom:16}}>
+        <span onClick={()=>{sessionStorage.setItem('__autoEnterFleet','1');window.location.href=activeCustomer?'./index.html?customer='+encodeURIComponent(activeCustomer):'./index.html';}} style={{border:"1px solid transparent",background:"transparent",color:"#57514d",textTransform:"none",letterSpacing:"0.01em",fontWeight:700,padding:"7px 16px",borderRadius:10,fontSize:12,textDecoration:"none",cursor:"pointer"}}>Fleet View</span>
+        <span onClick={()=>{if(activeTab==="actions"){setTab("gaps");history.replaceState(null,"","#");}}} style={{borderColor:activeTab!=="actions"?"#c6c0bb":"transparent",color:activeTab!=="actions"?"#1b1816":"#57514d",background:activeTab!=="actions"?"#fff":"transparent",boxShadow:activeTab!=="actions"?"0 1px 2px rgba(22,20,18,0.06), inset 0 -2px 0 #c74634":"none",border:`1px solid ${activeTab!=="actions"?"#c6c0bb":"transparent"}`,fontWeight:700,padding:"7px 16px",borderRadius:10,fontSize:12,cursor:activeTab==="actions"?"pointer":"default"}}>Maintenance Center</span>
+        <span onClick={()=>{setTab("actions");history.replaceState(null,"","#actions");}} style={{borderColor:activeTab==="actions"?"#c6c0bb":"transparent",color:activeTab==="actions"?"#1b1816":"#57514d",background:activeTab==="actions"?"#fff":"transparent",boxShadow:activeTab==="actions"?"0 1px 2px rgba(22,20,18,0.06), inset 0 -2px 0 #c74634":"none",border:`1px solid ${activeTab==="actions"?"#c6c0bb":"transparent"}`,fontWeight:700,padding:"7px 16px",borderRadius:10,fontSize:12,cursor:"pointer"}}>Action Center</span>
+      </div>
+
+      {/* ═══ Maintenance Center Content (hidden when Action Center is active) ═══ */}
+      {activeTab!=="actions"&&<React.Fragment>
+
+      {/* DenseIO + DR Warning Banners */}
+      {denseSched.length>0&&(
+        <div style={{background:"linear-gradient(135deg,#fef2f2,#fee2e2)",border:"2px solid #f87171",borderRadius:12,padding:"14px 18px",marginBottom:12,display:"flex",gap:10}}>
+          <div style={{fontSize:22}}>⚠</div>
+          <div>
+            <div style={{fontWeight:800,fontSize:13,color:"#991b1b"}}>{denseSched.length} DenseIO Instance{denseSched.length!==1?"s":""} — Back Up NVMe Now. Do NOT Stop/Start.</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:4}}>{denseSched.map(i=><span key={i.ID} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"#fff",border:"1px solid #fca5a5",color:"#991b1b",fontWeight:700}}>{i.Display_Name} — {fD(pD(i.Maintenance_UTC))}</span>)}</div>
+          </div>
+        </div>
+      )}
+      {gaps.some(g=>g.type==="dr_overlap")&&(
+        <div style={{background:"linear-gradient(135deg,#fef2f2,#fce7f3)",border:"2px solid #f472b6",borderRadius:12,padding:"14px 18px",marginBottom:12,display:"flex",gap:10}}>
+          <div style={{fontSize:22}}>🌐</div>
+          <div>
+            <div style={{fontWeight:800,fontSize:13,color:"#9d174d"}}>DR Region Overlap: Primary and DR Both Have Scheduled Maintenance</div>
+            <div style={{fontSize:11,color:"#be185d",lineHeight:1.5}}>Multiple regions are patched simultaneously. Failing over to a DR region does NOT guarantee avoidance. Plan for concurrent impact.</div>
+          </div>
+        </div>
+      )}
+
+      {/* Summary Cards */}
+      <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:18}}>
+        <div style={S.card}><div style={S.cL}>Total</div><div style={S.cV()}>{instances.length}</div><div style={S.cS}>{regions.length} subscribed regions</div></div>
+        <div style={S.card}><div style={S.cL}>Scheduled</div><div style={S.cV("#d97706")}>{scheduled.length}</div><div style={S.cS}>{scheduled.length?`Next: ${fD(strategies[0]?._date)}`:"None pending"}</div></div>
+        <div style={S.card}><div style={S.cL}>Completed</div><div style={S.cV("#16a34a")}>{completed.length}</div></div>
+        <div style={S.card}><div style={S.cL}>Clear</div><div style={S.cV("#64748b")}>{notSched.length}</div></div>
+        <div style={S.card}><div style={S.cL}>Findings</div><div style={S.cV(gaps.some(g=>g.severity==="critical")?"#dc2626":"#d97706")}>{gaps.length}</div><div style={S.cS}>{gaps.filter(g=>g.severity==="critical").length} critical</div></div>
+        <div style={S.card}><div style={S.cL}>Signal Changes</div><div style={S.cV("#c74634")}>{changed.length}</div></div>
+      </div>
+
+      {/* Content Tabs + Region Filter */}
+      <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:16,flexWrap:"wrap"}}>
+        {TABS.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} style={{
+          padding:"6px 14px",borderRadius:9,fontSize:10,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",cursor:"pointer",border:"1.5px solid",transition:"all 0.15s",
+          background:activeTab===t.id?"#c74634":"#fff",color:activeTab===t.id?"#fff":"#5f5956",borderColor:activeTab===t.id?"#c74634":"#e7dfdb"
+        }}>{t.label}{t.badge&&<span style={{marginLeft:4,fontSize:8,fontWeight:800,background:activeTab===t.id?"rgba(255,255,255,0.25)":"#fef3c7",color:activeTab===t.id?"#fff":"#92400e",padding:"1px 5px",borderRadius:3}}>{t.badge}</span>}</button>))}
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5}}>
+          <span style={{fontSize:9,fontWeight:700,color:"#8a7f79",textTransform:"uppercase",letterSpacing:"0.06em"}}>Region:</span>
+          <select value={filterRegion} onChange={e=>setFilterRegion(e.target.value)} style={{fontSize:11,padding:"4px 8px",borderRadius:7,border:"1px solid #e7dfdb",background:"#fff",cursor:"pointer"}}>
+            <option value="all">All ({regions.length})</option>{regions.map(r=><option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+      </div>
+
+      </React.Fragment>}
+
+      {/* SE Mode Banner — hidden on Action Center (has its own LIVE/DRY RUN) */}
+      {seMode&&activeTab!=="actions"&&<div style={{background:"linear-gradient(135deg,#fdf1ef,#fce7f3)",border:"1.5px solid #e8a398",borderRadius:10,padding:"8px 16px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:"#c74634",animation:"pulse 2s infinite"}}/>
+          <span style={{fontSize:11,fontWeight:700,color:"#c74634"}}>SE Mode Active</span>
+          <span style={{fontSize:11,color:"#9f3022"}}>— Strategy Picker, OKE Playbook, and Cost Impact tabs are now visible. Field intelligence and detailed remediation enabled.</span>
+        </div>
+        <span style={{fontSize:10,color:"#b0a8a2"}}>Press Esc to deactivate</span>
+      </div>}
+
+      {/* Content */}
+      <div style={S.panel}>
+        {activeTab==="strategy"&&<TabStrategy strategies={strategies}/>}
+        {activeTab==="heatmap"&&<TabHeatmap heatmap={filteredHeatmap} subscribedRegions={regions} filterRegion={filterRegion} regionDetails={regionDetails}/>}
+        {activeTab==="timeline"&&<TabTimeline timeline={timeline} timelineRange={timelineRange}/>}
+        {activeTab==="gaps"&&<TabGaps gaps={gaps} seMode={seMode}/>}
+        {activeTab==="oke"&&<TabOKE okeInstances={okeSched}/>}
+        {activeTab==="cost"&&<TabCost strategies={strategies} scheduled={scheduled}/>}
+        {activeTab==="actions"&&<TabActions strategies={strategies} instances={instances} isImported={!!activeCustomer}/>}
+        {activeTab==="export"&&<TabExport analysis={analysis} seMode={seMode}/>}
+      </div>
+
+      <div style={{marginTop:16,display:"flex",justifyContent:"space-between",fontSize:10,color:"#b0a8a2"}}>
+        <span>OCI Tenancy Explorer — Maintenance Center</span>
+        <span>{tenancyName} · {instances.length} instances · {scheduled.length} scheduled · {gaps.length} findings{activeCustomer?" · Imported snapshot":" · Auto-refreshes every 5 min"}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Live Boot: collect from OCI, show progress, user decides on errors ──
+(async () => {
+  const bootStatus = document.getElementById('mc-boot-status');
+  const bootRegions = document.getElementById('mc-boot-regions');
+  const bootLog = document.getElementById('mc-boot-log');
+  const setStatus = (msg) => { if (bootStatus) bootStatus.textContent = msg; };
+  const setLog = (msg) => { if (bootLog) bootLog.innerHTML = msg; };
+
+  // Shared: render the app from window.__FLEET_DATA
+  function renderApp() {
+    document.getElementById('mc-boot')?.remove();
+    ReactDOM.render(React.createElement(MaintenanceCenter), document.getElementById('root'));
+  }
+
+  // Shared: try loading existing fleet_data.json from disk as fallback
+  async function tryLoadExisting() {
+    try {
+      const res = await fetch('./fleet_data.json', { cache: 'no-store' });
+      if (!res.ok) return false;
+      window.__FLEET_DATA = await res.json();
+      return true;
+    } catch { return false; }
+  }
+
+  // Shared: show file upload option on boot screen
+  function showFileUpload(reason) {
+    setStatus(reason);
+    const uploadDiv = document.createElement('div');
+    uploadDiv.style.cssText = 'margin-top:20px;';
+    uploadDiv.innerHTML = '<label style="padding:10px 24px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff;border:none;display:inline-block">Load fleet_data.json<input type="file" accept=".json" style="display:none"/></label><div style="font-size:10px;color:#8a7f79;margin-top:8px">Load a fleet_data.json file to review offline. No OCI credentials required.</div>';
+    uploadDiv.querySelector('input').addEventListener('change', function(e) {
+      const f = e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          window.__FLEET_DATA = JSON.parse(ev.target.result);
+          renderApp();
+        } catch(err) { setLog('Failed to parse JSON: ' + err.message); }
+      };
+      reader.readAsText(f);
+    });
+    bootLog.parentNode.insertBefore(uploadDiv, bootLog);
+  }
+
+  const regionColors = { queued:'#cbd5e1', running:'#f59e0b', completed:'#22c55e', failed:'#ef4444' };
+  function renderRegionProgress(regions) {
+    if (!bootRegions || !regions) return;
+    bootRegions.innerHTML = regions.map(r => {
+      const color = regionColors[r.status] || '#cbd5e1';
+      const phase = r.status === 'running' ? r.phase || 'Working' : r.status;
+      const count = r.instanceCount ? ` (${r.instanceCount})` : '';
+      return `<div style="padding:4px 10px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid ${color};color:${r.status==='completed'?'#166534':r.status==='running'?'#92400e':'#64748b'};background:${r.status==='completed'?'#dcfce7':r.status==='running'?'#fef3c7':'#f8fafc'}">${r.name}<br/><span style="font-weight:400">${phase}${count}</span></div>`;
+    }).join('');
+  }
+
+  // Step 0: Check for customer URL param or sessionStorage — skip collection, load imported data
+  const urlCustomer = new URLSearchParams(window.location.search).get('customer') || sessionStorage.getItem('__activeCustomer') || '';
+  if (urlCustomer) {
+    setStatus('Loading imported customer: ' + urlCustomer + '...');
+    try {
+      const r = await fetch('/api/customers/load?name=' + encodeURIComponent(urlCustomer));
+      const bundle = await r.json();
+      if (bundle.fleet_data) {
+        window.__FLEET_DATA = bundle.fleet_data;
+        window.__ACTIVE_CUSTOMER = urlCustomer;
+        sessionStorage.setItem('__activeCustomer', urlCustomer);
+        renderApp();
+        return;
+      }
+    } catch(e) {}
+    showFileUpload('Could not load customer "' + urlCustomer + '". Load data manually:');
+    return;
+  }
+
+  // Step 1: Trigger live collection
+  setStatus('Starting fleet data collection across all regions...');
+  const isActionsMode = window.location.hash === '#actions';
+  if (isActionsMode) setStatus('Loading Action Center — collecting fleet data...');
+  try {
+    const triggerRes = await fetch('/api/refresh', { method: 'POST' });
+    const triggerData = await triggerRes.json();
+    if (!triggerData.started && !triggerData.running) {
+      // Collection could not start — try loading existing data
+      if (await tryLoadExisting()) { renderApp(); return; }
+      showFileUpload('Collection could not start. Load data manually:');
+      setLog(triggerData.message || 'Unknown error');
+      return;
+    }
+  } catch (e) {
+    // Cannot reach server — try loading existing data, otherwise show upload
+    if (await tryLoadExisting()) { renderApp(); return; }
+    showFileUpload('Cannot connect to portal server. Load data manually:');
+    setLog(e.message);
+    return;
+  }
+
+  // Step 2: Poll for progress
+  let running = true;
+  while (running) {
+    await new Promise(r => setTimeout(r, 800));
+    try {
+      const statusRes = await fetch('/api/refresh/status', { cache: 'no-store' });
+      const status = await statusRes.json();
+      running = status.running;
+
+      const done = status.completedRegions || 0;
+      const total = status.totalRegions || 0;
+      const current = (status.regions || []).find(r => r.status === 'running');
+      if (total > 0) {
+        setStatus(`Collecting: ${done} of ${total} regions complete${current ? ' — ' + current.name + ': ' + (current.phase || '') : ''}`);
+      }
+      renderRegionProgress(status.regions || []);
+
+      if (!running && status.lastExitCode !== 0) {
+        // Collection failed — try existing data
+        if (await tryLoadExisting()) { renderApp(); return; }
+        showFileUpload('Collection finished with errors. Load data manually:');
+        setLog('Exit code ' + status.lastExitCode);
+        return;
+      }
+    } catch (e) {
+      if (await tryLoadExisting()) { renderApp(); return; }
+      showFileUpload('Lost connection during collection. Load data manually:');
+      setLog(e.message);
+      return;
+    }
+  }
+
+  // Step 3: Load the fresh data
+  setStatus('Collection complete. Loading fleet data...');
+  try {
+    const res = await fetch('./fleet_data.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('fleet_data.json returned HTTP ' + res.status);
+    window.__FLEET_DATA = await res.json();
+  } catch (e) {
+    setStatus('Collection succeeded but fleet_data.json could not be loaded');
+    setLog(`${e.message}<br/><br/><a href="./index.html" style="color:#c74634;font-weight:700">← Back to Tenancy Explorer</a>`);
+    return;
+  }
+
+  // Step 4: Render
+  document.getElementById('mc-boot')?.remove();
+  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(MaintenanceCenter));
+
+  // Step 5: Auto-refresh every 5 minutes (skip when viewing imported customer)
+  setInterval(async () => {
+    if (window.__ACTIVE_CUSTOMER) return;
+    try {
+      await fetch('/api/refresh', { method: 'POST' });
+      let polling = true;
+      while (polling) {
+        await new Promise(r => setTimeout(r, 2000));
+        try { const s = await (await fetch('/api/refresh/status')).json(); polling = s.running; } catch (e) { polling = false; }
+      }
+      const res = await fetch('./fleet_data.json', { cache: 'no-store' });
+      if (res.ok) {
+        window.__FLEET_DATA = await res.json();
+        ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(MaintenanceCenter));
+      }
+    } catch (e) {}
+  }, 5 * 60 * 1000);
+})();
+</script>
+</body>
+</html>

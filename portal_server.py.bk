@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import shutil
 import subprocess
 import sys
 import threading
@@ -1083,265 +1082,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _maintenance_log(msg: str) -> None:
-    print(msg)
-
-
-class MaintenanceActionService:
-    """
-    Executes maintenance remediation actions via OCI SDK.
-    Ported from Gururaj Mohan's migrate_fd.py (github.com/gururaj0/oci-instance-maintenance-fd).
-    """
-
-    # Gururaj's maintenance state constants
-    _ACTIVE_MAINTENANCE_STATES = frozenset({"SCHEDULED", "STARTED", "PROCESSING"})
-    _CANCELED_MAINTENANCE_STATE = "CANCELED"
-
-    def __init__(self, profile: str, config_file: str, auth: str) -> None:
-        self.profile = profile
-        self.config_file = config_file
-        self.auth = auth
-        self._lock = threading.Lock()
-        self._context: dict[str, Any] | None = None
-        self._compute_by_region: dict[str, Any] = {}
-        self._identity_by_region: dict[str, Any] = {}
-
-    def _load_context(self) -> dict[str, Any]:
-        with self._lock:
-            if self._context is not None:
-                return self._context
-            if oci is None:
-                raise RuntimeError("OCI SDK not installed.")
-            args = SimpleNamespace(auth=self.auth, config_file=self.config_file, profile=self.profile)
-            config, signer = load_signer_and_config(args)
-            tenancy_id = get_tenancy_id(config, signer)
-            self._context = {"config": config, "signer": signer, "tenancy_id": tenancy_id}
-            return self._context
-
-    # Gururaj's per-region client caching
-    def _compute_for_region(self, region: str):
-        if region not in self._compute_by_region:
-            ctx = self._load_context()
-            regional_config = dict(ctx["config"])
-            regional_config["region"] = region
-            kwargs = {"config": regional_config}
-            if ctx["signer"] is not None:
-                kwargs["signer"] = ctx["signer"]
-            self._compute_by_region[region] = oci.core.ComputeClient(**kwargs)
-        return self._compute_by_region[region]
-
-    def _identity_for_region(self, region: str):
-        if region not in self._identity_by_region:
-            ctx = self._load_context()
-            regional_config = dict(ctx["config"])
-            regional_config["region"] = region
-            kwargs = {"config": regional_config}
-            if ctx["signer"] is not None:
-                kwargs["signer"] = ctx["signer"]
-            self._identity_by_region[region] = oci.identity.IdentityClient(**kwargs)
-        return self._identity_by_region[region]
-
-    # Gururaj's region extraction from instance OCID
-    @staticmethod
-    def _region_from_instance_ocid(ocid: str) -> str | None:
-        import re as _re
-        m = _re.match(r"^ocid1\.instance\.oc1\.([a-z0-9-]+)\.", ocid or "")
-        return m.group(1) if m else None
-
-    @staticmethod
-    def _response_etag(resp) -> str | None:
-        """Instance model has no .etag; OCI returns it on the HTTP response."""
-        if not resp or not resp.headers:
-            return None
-        return resp.headers.get("etag") or resp.headers.get("ETag")
-
-    # Gururaj's alternate fault domain selection with validation via list_fault_domains
-    def _alternate_fault_domain(self, inst, region: str, target_fd: str | None = None) -> str | None:
-        ctx = self._load_context()
-        id_client = self._identity_for_region(region)
-        fds = id_client.list_fault_domains(ctx["tenancy_id"], inst.availability_domain).data or []
-        names = {fd.name for fd in fds if fd.name}
-        if target_fd:
-            if target_fd not in names:
-                raise ValueError(f"Target FD {target_fd!r} does not exist in this AD. Valid: {sorted(names)}")
-            if target_fd == inst.fault_domain:
-                raise ValueError(f"Target FD equals current fault domain ({target_fd}).")
-            return target_fd
-        for fd in fds:
-            if fd.name and fd.name != inst.fault_domain:
-                return fd.name
-        return None
-
-    # Gururaj's maintenance event listing with compartment fallback
-    def _list_maintenance_events_for_instance(self, instance_id: str, cc, compartment_id: str) -> list:
-        evs = []
-        try:
-            resp = list_call_get_all_results(cc.list_instance_maintenance_events, compartment_id, instance_id=instance_id)
-            evs = [] if resp is None or getattr(resp, "data", None) is None else list(resp.data)
-        except Exception:
-            pass
-        if not evs:
-            try:
-                inst = cc.get_instance(instance_id).data
-                if inst.compartment_id and inst.compartment_id != compartment_id:
-                    resp = list_call_get_all_results(cc.list_instance_maintenance_events, inst.compartment_id, instance_id=instance_id)
-                    evs = [] if resp is None or getattr(resp, "data", None) is None else list(resp.data)
-            except Exception:
-                pass
-        return evs or []
-
-    # Gururaj's guard: non-cancelled active maintenance exists
-    def _has_non_cancelled_active_maintenance(self, active_maint: list) -> bool:
-        return bool(active_maint)
-
-    # Gururaj's guard: maintenance is cancelled only — never execute
-    def _maintenance_is_cancelled_only(self, maint_events: list, active_maint: list) -> bool:
-        if not maint_events or active_maint:
-            return False
-        return any(
-            (getattr(e, "lifecycle_state", None) or "").upper() == self._CANCELED_MAINTENANCE_STATE
-            for e in maint_events
-        )
-
-    def fd_move(self, instance_id: str, target_fault_domain: str, reboot_action: str = "SOFTRESET") -> dict[str, Any]:
-        """
-        Move an instance to a different fault domain and reboot.
-        Ported from Gururaj Mohan's change_fault_domain_and_reboot().
-        """
-        if not instance_id or not target_fault_domain:
-            return {"success": False, "error": "instanceId and targetFaultDomain are required."}
-        if reboot_action not in ("SOFTRESET", "RESET"):
-            reboot_action = "SOFTRESET"
-
-        region = self._region_from_instance_ocid(instance_id)
-        if not region:
-            return {"success": False, "error": f"Cannot determine region from OCID: {instance_id}"}
-
-        try:
-            cc = self._compute_for_region(region)
-
-            # Get instance
-            try:
-                resp0 = cc.get_instance(instance_id)
-            except oci.exceptions.ServiceError as e:
-                if e.status in (404, 403):
-                    return {"success": False, "error": f"get_instance failed ({e.status} {e.code}). Instance may be terminated, IAM policy missing, or region not enabled. OCID: {instance_id}"}
-                raise
-
-            inst = resp0.data
-            etag = self._response_etag(resp0)
-            current_fd = inst.fault_domain or ""
-            display_name = inst.display_name or instance_id
-            compartment_id = inst.compartment_id or ""
-
-            if not inst.availability_domain or not inst.fault_domain:
-                return {"success": False, "error": f"Instance {display_name} missing availability_domain or fault_domain."}
-
-            # Validate target FD exists in this AD (Gururaj's list_fault_domains check)
-            try:
-                validated_fd = self._alternate_fault_domain(inst, region, target_fault_domain)
-                if not validated_fd:
-                    return {"success": False, "error": f"No alternate fault domain available in AD {inst.availability_domain}."}
-            except ValueError as ve:
-                return {"success": False, "error": str(ve)}
-
-            # Check maintenance events (Gururaj's safety guards)
-            maint_events = self._list_maintenance_events_for_instance(instance_id, cc, compartment_id)
-            active_maint = [e for e in maint_events if (getattr(e, "lifecycle_state", "") or "").upper() in self._ACTIVE_MAINTENANCE_STATES]
-            maint_states = sorted({(getattr(e, "lifecycle_state", "") or "") for e in maint_events}) if maint_events else ["none"]
-
-            _maintenance_log(f"[maintenance-action] {display_name}: maintenance states = {', '.join(maint_states)}")
-
-            # Gururaj's cancelled-only guard — never execute, not overridable
-            if self._maintenance_is_cancelled_only(maint_events, active_maint):
-                return {
-                    "success": False,
-                    "error": f"Maintenance for {display_name} is CANCELED (no active work). Will not run FD change or reboot.",
-                    "instanceId": instance_id,
-                    "maintenanceStates": maint_states,
-                }
-
-            _maintenance_log(f"[maintenance-action] FD move: {display_name} ({current_fd} -> {validated_fd}) in {region}")
-
-            # Update fault domain
-            try:
-                cc.update_instance(
-                    instance_id,
-                    oci.core.models.UpdateInstanceDetails(fault_domain=validated_fd),
-                    if_match=etag,
-                )
-                _maintenance_log(f"[maintenance-action] update_instance(fault_domain={validated_fd}) OK for {display_name}")
-            except oci.exceptions.ServiceError as e:
-                # Gururaj's hint: stop the instance, change fault domain, start
-                _maintenance_log(f"[maintenance-action] update_instance failed ({e.status}): {e.message}")
-                if e.status == 409:
-                    _maintenance_log(f"[maintenance-action] Attempting stop/update/start flow for {display_name}")
-                    return self._stop_update_start(cc, instance_id, display_name, validated_fd, current_fd, maint_states)
-                return {"success": False, "error": f"update_instance failed: {e.status} — {e.message}. Hint: stop the instance, change fault domain, start, then retry.", "instanceId": instance_id}
-
-            # Reboot
-            try:
-                resp2 = cc.get_instance(instance_id)
-                etag2 = self._response_etag(resp2)
-                cc.instance_action(instance_id, reboot_action, if_match=etag2)
-                _maintenance_log(f"[maintenance-action] {reboot_action} OK for {display_name}")
-            except oci.exceptions.ServiceError as e:
-                _maintenance_log(f"[maintenance-action] {reboot_action} failed: {e.status} — {e.message}")
-                return {
-                    "success": True,
-                    "message": f"FD updated to {validated_fd} but {reboot_action} failed ({e.message}). Instance may need manual reboot.",
-                    "instanceId": instance_id, "previousFD": current_fd, "targetFD": validated_fd,
-                    "rebootFailed": True, "maintenanceStates": maint_states,
-                }
-
-            return {
-                "success": True,
-                "message": f"Moved {display_name} from {current_fd} to {validated_fd}. {reboot_action} initiated. Maintenance event should clear (may show PROCESSING briefly — known bug, clears to CANCELED).",
-                "instanceId": instance_id, "previousFD": current_fd, "targetFD": validated_fd,
-                "rebootAction": reboot_action, "method": "update-softreset", "maintenanceStates": maint_states,
-            }
-
-        except Exception as exc:
-            error_msg = getattr(exc, "message", str(exc))
-            _maintenance_log(f"[maintenance-action] FD move failed for {instance_id}: {error_msg}")
-            return {"success": False, "error": error_msg, "instanceId": instance_id}
-
-    def _stop_update_start(self, cc, instance_id: str, display_name: str, target_fd: str, current_fd: str, maint_states: list) -> dict[str, Any]:
-        """Gururaj's fallback: stop instance, update FD, start. For when update_instance fails on running instance."""
-        import time
-        try:
-            cc.instance_action(instance_id, "STOP")
-            _maintenance_log(f"[maintenance-action] STOP initiated for {display_name}")
-            for _ in range(60):
-                time.sleep(5)
-                check = cc.get_instance(instance_id).data
-                if check.lifecycle_state == "STOPPED":
-                    break
-            else:
-                return {"success": False, "error": f"{display_name} did not reach STOPPED state after 5 minutes.", "instanceId": instance_id}
-
-            resp_stopped = cc.get_instance(instance_id)
-            etag_stopped = self._response_etag(resp_stopped)
-            cc.update_instance(instance_id, oci.core.models.UpdateInstanceDetails(fault_domain=target_fd), if_match=etag_stopped)
-            _maintenance_log(f"[maintenance-action] update_instance on STOPPED instance OK for {display_name}")
-
-            resp_updated = cc.get_instance(instance_id)
-            etag_updated = self._response_etag(resp_updated)
-            cc.instance_action(instance_id, "START", if_match=etag_updated)
-            _maintenance_log(f"[maintenance-action] START initiated for {display_name}")
-
-            return {
-                "success": True,
-                "message": f"Moved {display_name} from {current_fd} to {target_fd} via stop/update/start. Instance is starting.",
-                "instanceId": instance_id, "previousFD": current_fd, "targetFD": target_fd,
-                "method": "stop-update-start", "maintenanceStates": maint_states,
-            }
-        except Exception as exc:
-            error_msg = getattr(exc, "message", str(exc))
-            _maintenance_log(f"[maintenance-action] stop/update/start failed for {display_name}: {error_msg}")
-            return {"success": False, "error": f"Stop/update/start flow failed: {error_msg}", "instanceId": instance_id}
-
-
 def make_handler(
     fleet_runner: RefreshRunner,
     opportunities_runner: RefreshRunner,
@@ -1349,7 +1089,6 @@ def make_handler(
     announcements_runner: RefreshRunner,
     sync_runner: SyncRunner,
     resource_lookup_service: ResourceLookupService,
-    maintenance_action_service: "MaintenanceActionService",
     url_prefix: str,
 ):
     def current_app_config() -> dict[str, Any]:
@@ -1439,65 +1178,6 @@ def make_handler(
                 ocid = (query.get("ocid") or [""])[0]
                 self._send_json(resource_lookup_service.lookup(ocid))
                 return
-            if normalized_path == "/api/export/bundle":
-                bundle = {"bundleVersion": 1, "exportedAt": datetime.now(timezone.utc).isoformat()}
-                for fname, key in [("fleet_data.json", "fleet_data"), ("fleet_data_shapes.json", "fleet_data_shapes"), ("fleet_data_opportunities.json", "fleet_data_opportunities"), ("fleet_data_announcements.json", "fleet_data_announcements")]:
-                    fpath = ROOT / fname
-                    if fpath.is_file():
-                        try:
-                            bundle[key] = json.loads(fpath.read_text(encoding="utf-8"))
-                        except Exception:
-                            bundle[key] = None
-                    else:
-                        bundle[key] = None
-                if bundle.get("fleet_data") and isinstance(bundle["fleet_data"], dict):
-                    fd = bundle["fleet_data"]
-                    customers = fd.get("customers") or []
-                    bundle["customerName"] = (customers[0]["name"] if customers and isinstance(customers[0], dict) and "name" in customers[0] else None) or fd.get("tenancy_name") or fd.get("tenancyName") or fd.get("tenancy") or "Unknown"
-                else:
-                    bundle["customerName"] = "Unknown"
-                self._send_json(bundle)
-                return
-            if normalized_path == "/api/customers":
-                customers_dir = ROOT / "customers"
-                customers = []
-                if customers_dir.is_dir():
-                    for d in sorted(customers_dir.iterdir()):
-                        if d.is_dir() and (d / "fleet_data.json").is_file():
-                            meta = {"name": d.name, "hasFleet": True}
-                            meta["hasShapes"] = (d / "fleet_data_shapes.json").is_file()
-                            meta["hasOpportunities"] = (d / "fleet_data_opportunities.json").is_file()
-                            meta["hasAnnouncements"] = (d / "fleet_data_announcements.json").is_file()
-                            try:
-                                fd = json.loads((d / "fleet_data.json").read_text(encoding="utf-8"))
-                                meta["instanceCount"] = len(fd.get("instances", []))
-                                meta["importedAt"] = fd.get("generatedAt", "")
-                            except Exception:
-                                pass
-                            customers.append(meta)
-                self._send_json({"customers": customers})
-                return
-            if normalized_path.startswith("/api/customers/load"):
-                name = (query.get("name") or [""])[0]
-                if not name:
-                    self._send_json({"error": "Missing customer name"}, status=HTTPStatus.BAD_REQUEST)
-                    return
-                cdir = ROOT / "customers" / name
-                if not cdir.is_dir():
-                    self._send_json({"error": f"Customer '{name}' not found"}, status=HTTPStatus.NOT_FOUND)
-                    return
-                bundle = {"bundleVersion": 1, "customerName": name}
-                for fname, key in [("fleet_data.json", "fleet_data"), ("fleet_data_shapes.json", "fleet_data_shapes"), ("fleet_data_opportunities.json", "fleet_data_opportunities"), ("fleet_data_announcements.json", "fleet_data_announcements")]:
-                    fpath = cdir / fname
-                    if fpath.is_file():
-                        try:
-                            bundle[key] = json.loads(fpath.read_text(encoding="utf-8"))
-                        except Exception:
-                            bundle[key] = None
-                    else:
-                        bundle[key] = None
-                self._send_json(bundle)
-                return
             self._set_normalized_path(normalized_path, query_string)
             super().do_GET()
 
@@ -1552,64 +1232,6 @@ def make_handler(
                 started, message = sync_runner.start(enabled_sync_steps())
                 status = HTTPStatus.ACCEPTED if started else HTTPStatus.CONFLICT
                 self._send_json({"started": started, "message": message, **sync_runner.state.snapshot()}, status=status)
-                return
-            if normalized_path == "/api/maintenance/fd-move":
-                try:
-                    content_length = int(self.headers.get("Content-Length", 0))
-                    body_raw = self.rfile.read(content_length) if content_length > 0 else b""
-                    body = json.loads(body_raw) if body_raw else {}
-                except (json.JSONDecodeError, ValueError):
-                    self._send_json({"success": False, "error": "Invalid JSON body."}, status=HTTPStatus.BAD_REQUEST)
-                    return
-                result = maintenance_action_service.fd_move(
-                    instance_id=body.get("instanceId", ""),
-                    target_fault_domain=body.get("targetFaultDomain", ""),
-                    reboot_action=body.get("rebootAction", "SOFTRESET"),
-                )
-                status = HTTPStatus.OK if result.get("success") else HTTPStatus.INTERNAL_SERVER_ERROR
-                self._send_json(result, status=status)
-                return
-            if normalized_path == "/api/customers/import":
-                try:
-                    content_length = int(self.headers.get("Content-Length", 0))
-                    body_raw = self.rfile.read(content_length) if content_length > 0 else b""
-                    bundle = json.loads(body_raw) if body_raw else {}
-                except (json.JSONDecodeError, ValueError):
-                    self._send_json({"success": False, "error": "Invalid JSON body."}, status=HTTPStatus.BAD_REQUEST)
-                    return
-                name = bundle.get("customerName", "").strip()
-                if not name:
-                    self._send_json({"success": False, "error": "Missing customerName in bundle."}, status=HTTPStatus.BAD_REQUEST)
-                    return
-                safe_name = "".join(c if c.isalnum() or c in "-_ " else "" for c in name).strip().replace(" ", "_")
-                if not safe_name:
-                    self._send_json({"success": False, "error": "Invalid customer name."}, status=HTTPStatus.BAD_REQUEST)
-                    return
-                cdir = ROOT / "customers" / safe_name
-                cdir.mkdir(parents=True, exist_ok=True)
-                saved = []
-                for key, fname in [("fleet_data", "fleet_data.json"), ("fleet_data_shapes", "fleet_data_shapes.json"), ("fleet_data_opportunities", "fleet_data_opportunities.json"), ("fleet_data_announcements", "fleet_data_announcements.json")]:
-                    data = bundle.get(key)
-                    if data is not None:
-                        (cdir / fname).write_text(json.dumps(data, indent=2), encoding="utf-8")
-                        saved.append(fname)
-                self._send_json({"success": True, "customerName": safe_name, "savedFiles": saved, "path": str(cdir)})
-                return
-            if normalized_path == "/api/customers/delete":
-                try:
-                    content_length = int(self.headers.get("Content-Length", 0))
-                    body_raw = self.rfile.read(content_length) if content_length > 0 else b""
-                    body = json.loads(body_raw) if body_raw else {}
-                except (json.JSONDecodeError, ValueError):
-                    self._send_json({"success": False, "error": "Invalid JSON body."}, status=HTTPStatus.BAD_REQUEST)
-                    return
-                name = body.get("name", "").strip()
-                cdir = ROOT / "customers" / name
-                if not name or not cdir.is_dir():
-                    self._send_json({"success": False, "error": f"Customer '{name}' not found."}, status=HTTPStatus.NOT_FOUND)
-                    return
-                shutil.rmtree(cdir)
-                self._send_json({"success": True, "deleted": name})
                 return
             self.send_error(HTTPStatus.NOT_FOUND, "Unknown endpoint")
 
@@ -1679,11 +1301,6 @@ def main() -> int:
         config_file=args.config_file,
         auth=args.auth,
     )
-    maintenance_action_service = MaintenanceActionService(
-        profile=args.profile,
-        config_file=args.config_file,
-        auth=args.auth,
-    )
     handler = make_handler(
         fleet_runner,
         opportunities_runner,
@@ -1691,7 +1308,6 @@ def main() -> int:
         announcements_runner,
         sync_runner,
         resource_lookup_service,
-        maintenance_action_service,
         url_prefix,
     )
     server = ThreadingHTTPServer((args.host, args.port), handler)

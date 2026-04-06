@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir oci \
     && useradd --create-home --home-dir /home/appuser --shell /usr/sbin/nologin appuser
 
-COPY --chown=appuser:appuser index.html build_fleet_data.py portal_server.py favicon.svg oci_config.example README.md SECURITY.md fleet_data_sample_json/fleet_data.sample.json ./
+COPY --chown=appuser:appuser index.html maintenance_center.html build_fleet_data.py portal_server.py favicon.svg oci_config.example README.md SECURITY.md fleet_data_sample_json/fleet_data.sample.json ./
 RUN chown -R appuser:appuser ${APP_HOME}
 
 USER appuser
