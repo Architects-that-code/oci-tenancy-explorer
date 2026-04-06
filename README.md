@@ -32,7 +32,7 @@ The project has three main parts:
 
 ### Dashboard / Index View
 
-![OCI Tenancy Explorer Dashboard View](images/index.png)
+![OCI Tenancy Explorer Dashboard View](images/index_column_adjust.png)
 
 ## Quick Start (Direct)
 
