@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-01-01T00:00:00Z",
   "generatedAtEpochMs": 1767225600000,
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "source": {
     "type": "oci-sdk",
     "auth": "config",
@@ -38,6 +38,7 @@
       "Host_ID": "",
       "Maintenance_Reboot_Due": "Yes",
       "Maintenance_UTC": "2026-01-15 12:00:00",
+      "time_window_start": "2026-01-15 10:00:00",
       "Maintenance_IST": "2026-01-15 17:30",
       "Maintenance_EDT": "2026-01-15 08:00",
       "Maintenance_Source": "Instance Maintenance Event",

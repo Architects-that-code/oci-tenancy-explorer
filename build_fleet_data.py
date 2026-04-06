@@ -722,6 +722,7 @@ def derive_status_change_fields(
     reboot_status: str,
     maintenance_action: str,
     maintenance_due_dt: datetime | None,
+    maintenance_window_start_dt: datetime | None,
     maintenance_event_state: str,
     generated_at: datetime,
 ) -> tuple[str, str, str]:
@@ -737,6 +738,7 @@ def derive_status_change_fields(
         [
             previous.get("Maintenance_Action", ""),
             previous.get("Maintenance_UTC", ""),
+            previous.get("time_window_start", ""),
             previous.get("Maintenance_Event_Status", ""),
         ]
     )
@@ -744,6 +746,7 @@ def derive_status_change_fields(
         [
             format_maintenance_action(maintenance_action),
             format_utc_display(maintenance_due_dt),
+            format_utc_display(maintenance_window_start_dt),
             format_maintenance_state(maintenance_event_state),
         ]
     )
@@ -775,6 +778,11 @@ def build_instance_row(
     maintenance_event = maintenance_events.get(instance_id)
     maintenance_action = maintenance_event.instance_action if maintenance_event else ""
     maintenance_event_state = maintenance_event.lifecycle_state if maintenance_event else ""
+    maintenance_window_start_dt = (
+        maintenance_event.time_window_start
+        if maintenance_event and maintenance_event.time_window_start
+        else None
+    )
     maintenance_due_dt = (
         maintenance_event.time_hard_due_date
         if maintenance_event and maintenance_event.time_hard_due_date
@@ -805,6 +813,7 @@ def build_instance_row(
         reboot_status,
         effective_maintenance_action,
         maintenance_due_dt,
+        maintenance_window_start_dt,
         maintenance_event_state,
         generated_at,
     )
@@ -829,6 +838,7 @@ def build_instance_row(
         "Host_ID": getattr(instance, "dedicated_vm_host_id", "") or getattr(instance, "host_id", "") or "",
         "Maintenance_Reboot_Due": "-" if maintenance_due_dt is None or not maintenance_action_requires_reboot(effective_maintenance_action) else "Yes",
         "Maintenance_UTC": format_utc_display(maintenance_due_dt),
+        "time_window_start": format_utc_display(maintenance_window_start_dt),
         "Maintenance_IST": shift_display(maintenance_due_dt, 5, 30),
         "Maintenance_EDT": shift_display(maintenance_due_dt, -4, 0),
         "Maintenance_Source": maintenance_source,
@@ -1053,7 +1063,7 @@ def main() -> int:
     payload = {
         "generatedAt": iso_utc(generated_at),
         "generatedAtEpochMs": generated_at_epoch_ms,
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "source": {
             "type": "oci-sdk",
             "auth": args.auth,
