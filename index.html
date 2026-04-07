@@ -40,12 +40,12 @@
         .custom-scrollbar::-webkit-scrollbar-track { background: #f3eeeb; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #d0c3bc; border-radius: 3px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #b29f95; }
-        
+
         .table-container { overflow-x: auto; position: relative; width: 100%; border-radius: 12px; }
         th, td { white-space: nowrap; border-right: 1px solid #f2ebe7; }
         th.sortable { cursor: pointer; transition: background 0.2s; position: relative; }
         th.sortable:hover { background: #fbf1ee; color: var(--oci-red); }
-        
+
         /* STATUS TAGS */
         .status-scheduled { background-color: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
         .status-not-scheduled { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
@@ -58,7 +58,7 @@
         .status-signal-changed { background-color: #fdf1ef; color: var(--oci-red); border: 1px solid #e8a398; }
         .status-signal-stable { background-color: #fbf8f6; color: #6e655f; border: 1px solid #d7cbc4; }
         .row-signal-changed { background: linear-gradient(90deg, rgba(253,241,239,0.95) 0%, rgba(255,255,255,1) 14%); }
-        
+
         /* INTERACTIVES */
         .copy-btn { opacity: 0.3; transition: all 0.15s; cursor: pointer; }
         .copy-btn:hover { opacity: 1; color: var(--oci-red); transform: scale(1.1); }
@@ -95,7 +95,7 @@
             color: #322d2a;
         }
         .highlight { background-color: #fef08a; color: #000; font-weight: 600; padding: 0 1px; }
-        
+
         /* MODALS & ANIMATION */
         .modal-overlay { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px); }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
@@ -111,7 +111,7 @@
             70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
-        
+
         .sort-indicator { margin-left: 4px; font-size: 10px; opacity: 0.3; }
         .sort-active { opacity: 1; color: var(--oci-red); font-weight: bold; }
         .refresh-log {
@@ -911,7 +911,10 @@
                 </div>
                 <div class="flex items-end gap-2">
                     <div class="flex flex-col items-end">
-                        <button id="sync-data-btn" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-md transition-all">Sync Data</button>
+                        <div class="flex gap-2">
+                            <button id="sync-data-btn" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-md transition-all">Sync Data</button>
+                            <button onclick="App.downloadBundle()" class="bg-white text-slate-700 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-300 hover:bg-slate-50 hover:border-slate-400 shadow-sm transition-all">Download Bundle</button>
+                        </div>
                         <p id="sync-data-status" class="mt-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Last Sync: Checking...</p>
                     </div>
                 </div>
@@ -1433,6 +1436,28 @@
         </div>
     </div>
 
+    <div id="bundle-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade">
+            <div class="bg-slate-900 p-8 text-white flex justify-between items-start">
+                <div>
+                    <h2 class="text-xl font-black uppercase tracking-tighter leading-none">Download Bundle</h2>
+                    <p class="text-blue-400 text-[10px] font-bold uppercase tracking-[0.3em] mt-2">Package fleet data for your SE</p>
+                </div>
+                <button onclick="App.toggleBundleModal(false)" class="text-3xl font-light hover:text-blue-400 transition-colors leading-none">&times;</button>
+            </div>
+            <div class="p-8">
+                <label class="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Company or Tenancy Name</label>
+                <input id="bundle-customer-name" type="text" placeholder="e.g. Acme Corp" class="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" onkeydown="if(event.key==='Enter')App.executeBundleDownload()">
+                <p class="mt-2 text-[10px] text-slate-400">This name identifies the bundle when your SE imports it.</p>
+                <div class="flex gap-3 mt-6">
+                    <button onclick="App.executeBundleDownload()" class="flex-1 bg-slate-900 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-md transition-all">Download</button>
+                    <button onclick="App.toggleBundleModal(false)" class="px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">Cancel</button>
+                </div>
+                <p id="bundle-error" class="hidden mt-3 text-[11px] font-bold text-red-600"></p>
+            </div>
+        </div>
+    </div>
+
     <div id="about-modal" class="hidden fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-[80vw] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade">
             <div class="bg-slate-900 p-10 text-white flex justify-between items-start">
@@ -1442,7 +1467,7 @@
                 </div>
                 <button onclick="App.toggleAbout(false)" class="text-4xl font-light hover:text-blue-400 transition-colors leading-none">&times;</button>
             </div>
-            
+
             <div class="p-12 overflow-y-auto custom-scrollbar text-sm text-slate-600 space-y-10 bg-white">
                 <section class="rounded-3xl border border-slate-200 bg-slate-50 p-8">
                     <div class="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-8 items-start">
@@ -6464,7 +6489,7 @@
                 const container = document.getElementById('view-dashboard');
                 const customers = this.customers || [];
                 const allData = this.allInstances || [];
-                
+
                 container.innerHTML = (customers || []).map(c => {
                     const d = allData.filter(x => x.customerId === c.name);
                     const comp = d.filter(x => x.reboot_status === 'Completed').length;
@@ -6687,7 +6712,7 @@
                 const pageStartIndex = (this.pagination.page - 1) * this.pagination.pageSize;
                 const pageRows = this.filtered.slice(pageStartIndex, pageStartIndex + this.pagination.pageSize);
                 this.updatePaginationControls(pageRows);
-                
+
                 document.getElementById('stat-completed').textContent = this.formatCount(this.filtered.filter(d => d.reboot_status === 'Completed').length);
                 document.getElementById('stat-scheduled').textContent = this.formatCount(this.filtered.filter(d => d.reboot_status === 'Scheduled').length);
                 document.getElementById('stat-not-scheduled').textContent = this.formatCount(this.filtered.filter(d => d.reboot_status === 'Not Scheduled').length);
@@ -6736,6 +6761,44 @@
             },
 
             toggleAbout(show) { document.getElementById('about-modal').classList.toggle('hidden', !show); },
+            toggleBundleModal(show) {
+                var modal = document.getElementById('bundle-modal');
+                modal.classList.toggle('hidden', !show);
+                if (show) {
+                    document.getElementById('bundle-customer-name').value = '';
+                    document.getElementById('bundle-error').classList.add('hidden');
+                    setTimeout(function() { document.getElementById('bundle-customer-name').focus(); }, 100);
+                }
+            },
+            async downloadBundle() { this.toggleBundleModal(true); },
+            async executeBundleDownload() {
+                var nameInput = document.getElementById('bundle-customer-name');
+                var errorEl = document.getElementById('bundle-error');
+                var name = (nameInput.value || '').trim();
+                if (!name) { errorEl.textContent = 'Please enter a company or tenancy name.'; errorEl.classList.remove('hidden'); nameInput.focus(); return; }
+                errorEl.classList.add('hidden');
+                try {
+                    var res = await fetch('/api/export/bundle?name=' + encodeURIComponent(name));
+                    if (!res.ok) {
+                        var err = await res.json().catch(function() { return {}; });
+                        errorEl.textContent = err.error || 'Failed to export bundle. Run Sync Data first.';
+                        errorEl.classList.remove('hidden');
+                        return;
+                    }
+                    var disposition = res.headers.get('Content-Disposition') || '';
+                    var match = disposition.match(/filename="?([^"]+)"?/);
+                    var filename = match ? match[1] : name.replace(/\s+/g, '_') + '_bundle.json';
+                    var blob = await res.blob();
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url; a.download = filename; a.click();
+                    URL.revokeObjectURL(url);
+                    this.toggleBundleModal(false);
+                } catch(e) {
+                    errorEl.textContent = 'Bundle download failed: ' + e.message;
+                    errorEl.classList.remove('hidden');
+                }
+            },
             toggleSetupModal(type, show) {
                 const modalId = type === 'principal' ? 'principal-setup-modal' : 'config-setup-modal';
                 document.getElementById(modalId).classList.toggle('hidden', !show);
@@ -6748,7 +6811,7 @@
                 if (e) e.stopPropagation();
                 navigator.clipboard.writeText(text);
                 const btn = sourceButton || e?.currentTarget;
-                if (btn) { 
+                if (btn) {
                     const old = btn.innerHTML;
                     btn.innerHTML = `
                         <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -6758,7 +6821,7 @@
                 }
             }
         };
-        
+
         App.init();
     </script>
 </body>
