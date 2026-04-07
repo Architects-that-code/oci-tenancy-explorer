@@ -1178,6 +1178,39 @@ def make_handler(
                 ocid = (query.get("ocid") or [""])[0]
                 self._send_json(resource_lookup_service.lookup(ocid))
                 return
+            if normalized_path == "/api/export/bundle":
+                customer_name = (query.get("name") or [""])[0].strip()
+                if not customer_name:
+                    self._send_json({"error": "Customer name is required. Provide ?name=YourName"}, status=HTTPStatus.BAD_REQUEST)
+                    return
+                bundle: dict[str, Any] = {"bundleVersion": 1, "exportedAt": utc_now_iso(), "customerName": customer_name}
+                for label, path in [
+                    ("fleet_data", FLEET_JSON),
+                    ("fleet_data_shapes", SHAPES_JSON),
+                    ("fleet_data_opportunities", OPPORTUNITIES_JSON),
+                    ("fleet_data_announcements", ANNOUNCEMENTS_JSON),
+                ]:
+                    if path.exists():
+                        try:
+                            bundle[label] = json.loads(path.read_text(encoding="utf-8"))
+                        except Exception:
+                            bundle[label] = None
+                    else:
+                        bundle[label] = None
+                if not any(bundle.get(k) for k in ("fleet_data", "fleet_data_shapes", "fleet_data_opportunities", "fleet_data_announcements")):
+                    self._send_json({"error": "No snapshot files found. Run Sync Data first."}, status=HTTPStatus.NOT_FOUND)
+                    return
+                body = json.dumps(bundle).encode("utf-8")
+                safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in customer_name)
+                filename = f"{safe_name}_bundle.json"
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
             self._set_normalized_path(normalized_path, query_string)
             super().do_GET()
 
