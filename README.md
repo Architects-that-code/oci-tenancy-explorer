@@ -34,6 +34,11 @@ The project has three main parts:
 
 ![OCI Tenancy Explorer Dashboard View](images/index_column_adjust.png)
 
+Fleet View supports column selection for the main grid.
+
+- `Select All` shows every available column in the snapshot.
+- `Core Only` applies a reduced operational view with `OCID`, `Display Name`, `Instance State`, `Status`, `Window Start (IST)`, `Window Start (UTC)`, `Compartment`, and `definedTags`.
+
 ## Quick Start (Direct)
 
 1. Clone the repository:
@@ -72,6 +77,7 @@ http://127.0.0.1:8765/index.html
 Notes:
 - Configure OCI auth via `~/.oci/config` (see `oci_config.example`) or use `--auth instance_principal` when running on OCI compute.
 - Keep `fleet_data.json` local; it contains tenancy metadata.
+- In Fleet View, use the column selector to switch between the full table and the `Core Only` operational column set.
 
 ## Quick Start (Docker)
 
