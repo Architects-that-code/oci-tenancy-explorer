@@ -1967,13 +1967,13 @@
             visibleColumns: [],
             columnFilterOpen: false,
             pagination: { page: 1, pageSize: 25 },
-            coreKeys: ["ID", "Display_Name", "State", "Status_Change_Signal", "reboot_status", "Maintenance_Action", "Maintenance_Event_Status", "Live_Migration_Preference", "Compartment_Name", "Region", "Fault_Domain", "Availability_Domain", "Previous_Status", "Status_Changed_UTC", "Last_Reboot_UTC", "Last_Reboot_IST", "Last_Reboot_EDT", "Reboot_Evidence", "Maintenance_UTC", "time_window_start", "Maintenance_IST", "Maintenance_EDT", "Maintenance_Source"],
+            coreKeys: ["ID", "Display_Name", "State", "reboot_status", "time_window_start_IST", "time_window_start", "Compartment_Name", "definedTags"],
             headerMap: {
                 "ID": "OCID", "Display_Name": "Display Name", "State": "Instance State", "reboot_status": "Status",
                 "Maintenance_Action": "Maintenance Action", "Maintenance_Event_Status": "Maintenance Event Status", "Live_Migration_Preference": "Live Migration Preference",
                 "Status_Change_Signal": "Signal", "Previous_Status": "Previous Status", "Status_Changed_UTC": "Changed At (UTC)",
                 "Last_Reboot_UTC": "Last Reboot (UTC)", "Last_Reboot_IST": "Last Reboot (IST)", "Last_Reboot_EDT": "Last Reboot (EDT)", "Reboot_Evidence": "Reboot Evidence",
-                "Maintenance_UTC": "Date (UTC)", "time_window_start": "Window Start (UTC)", "Maintenance_IST": "Date (IST)", "Maintenance_EDT": "Date (EDT)", "Maintenance_Source": "Maintenance Source",
+                "Maintenance_UTC": "Date (UTC)", "time_window_start": "Window Start (UTC)", "time_window_start_IST": "Window Start (IST)", "Maintenance_IST": "Date (IST)", "Maintenance_EDT": "Date (EDT)", "Maintenance_Source": "Maintenance Source",
                 "Compartment_Name": "Compartment", "Region": "Region", "Fault_Domain": "Fault Domain", "Availability_Domain": "Availability Domain"
             },
             filters: { search: '', reboot_status: 'all', Status_Change_Signal: 'all', Compartment_Name: 'all', Region: 'all', Availability_Domain: 'all', Fault_Domain: 'all', Shape: 'all' },
@@ -2436,6 +2436,24 @@
                 const d = date instanceof Date ? date : new Date(date);
                 if (isNaN(d.getTime())) return '';
                 return d.toISOString().replace('T', ' ').substring(0, includeSeconds ? 19 : 16);
+            },
+
+            shiftUtcDisplay(value, hours, minutes = 0) {
+                const text = String(value || '').trim();
+                if (!text || text === '-') return '';
+                const normalized = text.includes('T') ? text : text.replace(' ', 'T');
+                const parsed = new Date(`${normalized}Z`);
+                if (isNaN(parsed.getTime())) return '';
+                const shifted = new Date(parsed.getTime() + (((hours * 60) + minutes) * 60 * 1000));
+                return shifted.toISOString().replace('T', ' ').substring(0, 16);
+            },
+
+            hydrateFleetRow(row) {
+                const hydrated = { ...(row || {}) };
+                if (!hydrated.time_window_start_IST && hydrated.time_window_start) {
+                    hydrated.time_window_start_IST = this.shiftUtcDisplay(hydrated.time_window_start, 5, 30);
+                }
+                return hydrated;
             },
 
             getLatestLoadedSnapshotTimestamp() {
@@ -6591,7 +6609,9 @@
             },
 
             loadCustomerData() {
-                this.data = (this.allInstances || []).filter(row => row.customerId === this.currentCustomer);
+                this.data = (this.allInstances || [])
+                    .filter(row => row.customerId === this.currentCustomer)
+                    .map(row => this.hydrateFleetRow(row));
                 const allKeys = new Set();
                 this.data.forEach(item => Object.keys(item).forEach(k => allKeys.add(k)));
                 allKeys.delete('customerId'); allKeys.delete('uniqueKey');
