@@ -924,6 +924,7 @@
                 <button id="portal-tab-overview" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Tenancy Overview</button>
                 <button id="portal-tab-fleet" class="portal-tab portal-tab-active rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Fleet View</button>
                 <button id="portal-tab-shapes" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Shape Explorer</button>
+                <button id="portal-tab-databases" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Database Services</button>
                 <button id="portal-tab-opportunities" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Opportunities</button>
                 <button id="portal-tab-announcements" class="portal-tab rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Console Announcements</button>
             </div>
@@ -1176,6 +1177,75 @@
                     </div>
                     <div id="shape-summary-bar" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-500">Shape inventory will appear here after the snapshot loads.</div>
                     <div id="shape-grid-content" class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-[11px] text-slate-500">Shape inventory will appear here after the snapshot loads.</div>
+                </div>
+            </div>
+
+            <div id="portal-databases-view" class="hidden space-y-6">
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                    <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                        <div>
+                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Database Services Actions</p>
+                            <p class="mt-2 text-[11px] leading-relaxed text-slate-600">Refresh Base Database, Managed MySQL, and Managed PostgreSQL inventory with lifecycle and maintenance signals in a single tenancy view.</p>
+                        </div>
+                        <div class="flex flex-col gap-2 xl:items-end">
+                            <div class="flex flex-wrap items-center gap-2 xl:justify-end">
+                                <a id="databases-json-source-link" href="./fleet_data_databases.json" target="_blank" rel="noopener noreferrer" class="json-source-link hidden inline-flex items-center justify-center rounded-xl border border-[#efc6be] bg-white px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all hover:border-[#c74634]">View JSON Source</a>
+                                <button id="databases-refresh-action" class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#c74634] px-4 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-[#9f3022]">
+                                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M5.64 18.36A9 9 0 1020 8.5"></path>
+                                    </svg>
+                                    <span>Refresh Databases</span>
+                                </button>
+                                <div id="databases-sync-indicator" class="sync-indicator hidden h-8 w-8 items-center justify-center rounded-full border bg-blue-50" aria-label="Database JSON source active" title="Database JSON source active">
+                                    <span class="pulse-dot"></span>
+                                </div>
+                            </div>
+                            <div id="databases-json-generated-at" class="hidden text-[10px] font-black text-slate-400 uppercase tracking-widest"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total DB Resources</p>
+                        <p id="db-stat-total" class="text-4xl font-black text-slate-800 leading-none">0</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Base Database</p>
+                        <p id="db-stat-basedb" class="text-4xl font-black text-slate-800 leading-none">0</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Managed MySQL</p>
+                        <p id="db-stat-mysql" class="text-4xl font-black text-slate-800 leading-none">0</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Managed PostgreSQL</p>
+                        <p id="db-stat-postgresql" class="text-4xl font-black text-slate-800 leading-none">0</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Regions</p>
+                        <p id="db-stat-regions" class="text-4xl font-black text-slate-800 leading-none">0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                    <div class="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                        <div>
+                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Database Workspace</p>
+                            <h3 class="mt-2 text-xl font-black text-slate-900">Filter And Export Database Services</h3>
+                            <p class="mt-2 text-[11px] leading-relaxed text-slate-500">Filter by service type, lifecycle, region, compartment, or keyword to prepare operational review and follow-up.</p>
+                        </div>
+                        <button id="db-export-action" type="button" class="rounded-xl border border-[#efc6be] bg-[#fff8f6] px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#c74634] transition-all hover:bg-[#fdf1ef]">Export Filtered CSV</button>
+                    </div>
+                    <div class="mt-5 grid grid-cols-1 xl:grid-cols-[220px_220px_220px_220px_minmax(0,1fr)] gap-3">
+                        <select id="db-filter-service" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500"></select>
+                        <select id="db-filter-lifecycle" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500"></select>
+                        <select id="db-filter-region" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500"></select>
+                        <select id="db-filter-compartment" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500"></select>
+                        <input id="db-search-input" type="text" placeholder="Search name, OCID, shape, version, region, compartment..." class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-700 outline-none transition-all focus:border-[#c74634]">
+                    </div>
+                    <div id="db-summary-bar" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-500">Database service inventory will appear here after the snapshot loads.</div>
+                    <div id="db-grid-content" class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-[11px] text-slate-500">Database service rows will appear here after the snapshot loads.</div>
                 </div>
             </div>
 
@@ -1478,7 +1548,7 @@
                             <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div class="rounded-2xl border border-slate-200 bg-white p-4">
                                     <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">What It Surfaces</p>
-                                    <p id="about-what-it-surfaces" class="mt-2 text-[12px] leading-relaxed text-slate-600">Tenancy summary, fleet posture, shape inventory, opportunity signals, console announcements, and OCID-level drill-down details.</p>
+                                    <p id="about-what-it-surfaces" class="mt-2 text-[12px] leading-relaxed text-slate-600">Tenancy summary, fleet posture, database services inventory, shape inventory, opportunity signals, console announcements, and OCID-level drill-down details.</p>
                                 </div>
                                 <div class="rounded-2xl border border-slate-200 bg-white p-4">
                                     <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">How It Stays Safe</p>
@@ -1492,7 +1562,7 @@
                                 <li>Click <code>Sync Data</code> to refresh all snapshots in sequence.</li>
                                 <li id="about-start-here-overview-step">Use <code>Tenancy Overview</code> to understand overall scope and estate shape.</li>
                                 <li>Use <code>Fleet View</code> to inspect individual assets, maintenance state, and change signals.</li>
-                                <li id="about-start-here-feature-step">Use <code>Shape Explorer</code>, <code>Opportunities</code>, and <code>Console Announcements</code> to guide deeper discussion.</li>
+                                <li id="about-start-here-feature-step">Use <code>Database Services</code>, <code>Shape Explorer</code>, <code>Opportunities</code>, and <code>Console Announcements</code> to guide deeper discussion.</li>
                                 <li>Click any OCID to open the <code>Asset Inspector</code> for direct resource drill-down and OCI Console handoff.</li>
                             </ol>
                         </div>
@@ -1518,6 +1588,13 @@
                             <p class="mt-2 text-[12px] leading-relaxed">Shows the main resource grid with filters, search, reboot and maintenance context, change signals, and the direct jump into the Asset Inspector for an OCID.</p>
                             <p class="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Best For</p>
                             <p class="mt-2 text-[12px] leading-relaxed">Finding specific hosts, filtering by region or compartment, exporting filtered results, and discussing operational follow-up.</p>
+                        </div>
+                        <div id="about-card-databases" class="rounded-2xl border border-slate-200 bg-white p-6">
+                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Database Services</p>
+                            <p class="mt-3 text-[13px] font-bold text-slate-800">Use this to review managed database inventory and operations context.</p>
+                            <p class="mt-2 text-[12px] leading-relaxed">Surfaces Base Database, Managed MySQL, and Managed PostgreSQL rows with lifecycle, region, compartment, shape/tier, and maintenance metadata in one filtered workspace.</p>
+                            <p class="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Best For</p>
+                            <p class="mt-2 text-[12px] leading-relaxed">Operational database reviews, lifecycle tracking, regional service distribution checks, and exportable follow-up lists.</p>
                         </div>
                         <div id="about-card-shapes" class="rounded-2xl border border-slate-200 bg-white p-6">
                             <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Shape Explorer</p>
@@ -1565,7 +1642,7 @@
                         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div class="rounded-2xl border border-slate-200 bg-white p-4">
                                 <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Order</p>
-                                <p id="about-sync-order" class="mt-2 text-[12px] leading-relaxed"><code>fleet_data.json</code>, <code>fleet_data_shapes.json</code>, <code>fleet_data_opportunities.json</code>, then <code>fleet_data_announcements.json</code>.</p>
+                                <p id="about-sync-order" class="mt-2 text-[12px] leading-relaxed"><code>fleet_data.json</code>, <code>fleet_data_databases.json</code>, <code>fleet_data_shapes.json</code>, <code>fleet_data_opportunities.json</code>, then <code>fleet_data_announcements.json</code>.</p>
                             </div>
                             <div class="rounded-2xl border border-slate-200 bg-white p-4">
                                 <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Why Sequential</p>
@@ -1592,7 +1669,7 @@
                         </div>
                         <div id="about-step-3-card" class="rounded-2xl border border-[#d7eedc] bg-[#f2fbf4] p-5">
                             <p class="font-black text-[10px] uppercase text-[#2f855a] mb-2">Step 3</p>
-                            <p id="about-step-3-text" class="text-[12px] leading-relaxed">Use <code>Shape Explorer</code> and <code>Opportunities</code> to surface modernization and platform discussion points.</p>
+                            <p id="about-step-3-text" class="text-[12px] leading-relaxed">Use <code>Database Services</code>, <code>Shape Explorer</code>, and <code>Opportunities</code> to surface modernization and platform discussion points.</p>
                         </div>
                         <div id="about-step-4-card" class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                             <p class="font-black text-[10px] uppercase text-slate-500 mb-2">Step 4</p>
@@ -1608,7 +1685,7 @@
                             <div class="space-y-3 text-[12px] leading-relaxed">
                                 <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
                                     <p class="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2">Collector Model</p>
-                                    <p>The portal uses separate Python collectors for fleet, shapes, opportunities, and announcements. The browser renders their generated JSON snapshots.</p>
+                                    <p>The portal uses separate Python collectors for fleet, databases, shapes, opportunities, and announcements. The browser renders their generated JSON snapshots.</p>
                                 </div>
                                 <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
                                     <p class="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2">OCI Data Sources</p>
@@ -1937,6 +2014,7 @@
             appConfig: null,
             opportunitiesData: null,
             shapeData: null,
+            databaseData: null,
             announcementsData: null,
             syncStatusSnapshot: null,
             currentPortalView: 'fleet',
@@ -1947,6 +2025,7 @@
             selectedOpportunityRegion: 'all',
             selectedOpportunityCheck: null,
             shapeFilters: { series: 'all', state: 'all', region: 'all', search: '' },
+            databaseFilters: { service: 'all', lifecycle: 'all', region: 'all', compartment: 'all', search: '' },
             announcementFilters: { lifecycle: 'all', type: 'all', service: 'all', search: '' },
             capabilityCheckFilters: { category: 'all', status: 'all', search: '' },
             expandedCapabilityChecks: {},
@@ -1983,6 +2062,7 @@
                 return {
                     'experimental-features': {
                         overview: false,
+                        databases: false,
                         shapes: true,
                         opportunities: true,
                         announcements: true,
@@ -2019,6 +2099,7 @@
             getAvailablePortalViews() {
                 const views = ['fleet'];
                 if (this.isFeatureEnabled('overview')) views.unshift('overview');
+                if (this.isFeatureEnabled('databases')) views.push('databases');
                 if (this.isFeatureEnabled('shapes')) views.push('shapes');
                 if (this.isFeatureEnabled('opportunities')) views.push('opportunities');
                 if (this.isFeatureEnabled('announcements')) views.push('announcements');
@@ -2027,6 +2108,7 @@
 
             getEnabledSyncModes() {
                 const modes = ['fleet'];
+                if (this.isFeatureEnabled('databases')) modes.push('databases');
                 if (this.isFeatureEnabled('shapes')) modes.push('shapes');
                 if (this.isFeatureEnabled('opportunities')) modes.push('opportunities');
                 if (this.isFeatureEnabled('announcements')) modes.push('announcements');
@@ -2035,6 +2117,7 @@
 
             getEnabledDeepDiveFeatures() {
                 return [
+                    this.isFeatureEnabled('databases') ? 'Database Services' : null,
                     this.isFeatureEnabled('shapes') ? 'Shape Explorer' : null,
                     this.isFeatureEnabled('opportunities') ? 'Opportunities' : null,
                     this.isFeatureEnabled('announcements') ? 'Console Announcements' : null,
@@ -2059,6 +2142,7 @@
                 const startHereOverviewStepEl = document.getElementById('about-start-here-overview-step');
                 const startHereFeatureStepEl = document.getElementById('about-start-here-feature-step');
                 const overviewCardEl = document.getElementById('about-card-overview');
+                const databasesCardEl = document.getElementById('about-card-databases');
                 const shapesCardEl = document.getElementById('about-card-shapes');
                 const opportunitiesCardEl = document.getElementById('about-card-opportunities');
                 const announcementsCardEl = document.getElementById('about-card-announcements');
@@ -2073,6 +2157,7 @@
                     const surfacedItems = [
                         ...(this.isFeatureEnabled('overview') ? ['tenancy summary'] : []),
                         'fleet posture',
+                        ...(this.isFeatureEnabled('databases') ? ['database services inventory'] : []),
                         ...(this.isFeatureEnabled('shapes') ? ['shape inventory'] : []),
                         ...(this.isFeatureEnabled('opportunities') ? ['opportunity signals'] : []),
                         ...(this.isFeatureEnabled('announcements') ? ['console announcements'] : []),
@@ -2095,6 +2180,7 @@
                 }
 
                 overviewCardEl?.classList.toggle('hidden', !this.isFeatureEnabled('overview'));
+                databasesCardEl?.classList.toggle('hidden', !this.isFeatureEnabled('databases'));
                 shapesCardEl?.classList.toggle('hidden', !this.isFeatureEnabled('shapes'));
                 opportunitiesCardEl?.classList.toggle('hidden', !this.isFeatureEnabled('opportunities'));
                 announcementsCardEl?.classList.toggle('hidden', !this.isFeatureEnabled('announcements'));
@@ -2102,6 +2188,7 @@
                 if (syncOrderEl) {
                     const syncFiles = this.getEnabledSyncModes().map(stepKey => ({
                         fleet: '<code>fleet_data.json</code>',
+                        databases: '<code>fleet_data_databases.json</code>',
                         shapes: '<code>fleet_data_shapes.json</code>',
                         opportunities: '<code>fleet_data_opportunities.json</code>',
                         announcements: '<code>fleet_data_announcements.json</code>',
@@ -2113,6 +2200,7 @@
 
                 if (step3CardEl && step3TextEl) {
                     const step3Features = [
+                        this.isFeatureEnabled('databases') ? 'Database Services' : null,
                         this.isFeatureEnabled('shapes') ? 'Shape Explorer' : null,
                         this.isFeatureEnabled('opportunities') ? 'Opportunities' : null,
                     ].filter(Boolean);
@@ -2143,6 +2231,7 @@
 
             applyAppConfig() {
                 document.getElementById('portal-tab-overview')?.classList.toggle('hidden', !this.isFeatureEnabled('overview'));
+                document.getElementById('portal-tab-databases')?.classList.toggle('hidden', !this.isFeatureEnabled('databases'));
                 document.getElementById('portal-tab-shapes')?.classList.toggle('hidden', !this.isFeatureEnabled('shapes'));
                 document.getElementById('portal-tab-opportunities')?.classList.toggle('hidden', !this.isFeatureEnabled('opportunities'));
                 document.getElementById('portal-tab-announcements')?.classList.toggle('hidden', !this.isFeatureEnabled('announcements'));
@@ -2181,6 +2270,7 @@
                 document.getElementById('pagination-next').onclick = () => this.changePage(1);
                 document.getElementById('portal-tab-overview').onclick = () => this.setPortalView('overview');
                 document.getElementById('portal-tab-fleet').onclick = () => this.setPortalView('fleet');
+                document.getElementById('portal-tab-databases').onclick = () => this.setPortalView('databases');
                 document.getElementById('portal-tab-shapes').onclick = () => this.setPortalView('shapes');
                 document.getElementById('portal-tab-opportunities').onclick = () => this.setPortalView('opportunities');
                 document.getElementById('portal-tab-announcements').onclick = () => this.setPortalView('announcements');
@@ -2197,6 +2287,13 @@
                 document.getElementById('shape-filter-region').onchange = (e) => this.setShapeFilter('region', e.target.value);
                 document.getElementById('shape-search-input').oninput = (e) => this.setShapeFilter('search', e.target.value);
                 document.getElementById('shape-export-action').onclick = () => this.exportShapeCSV();
+                document.getElementById('databases-refresh-action').onclick = () => this.openRefreshConsole('databases');
+                document.getElementById('db-filter-service').onchange = (e) => this.setDatabaseFilter('service', e.target.value);
+                document.getElementById('db-filter-lifecycle').onchange = (e) => this.setDatabaseFilter('lifecycle', e.target.value);
+                document.getElementById('db-filter-region').onchange = (e) => this.setDatabaseFilter('region', e.target.value);
+                document.getElementById('db-filter-compartment').onchange = (e) => this.setDatabaseFilter('compartment', e.target.value);
+                document.getElementById('db-search-input').oninput = (e) => this.setDatabaseFilter('search', e.target.value);
+                document.getElementById('db-export-action').onclick = () => this.exportDatabaseCSV();
                 document.getElementById('sync-data-btn').onclick = () => this.openRefreshConsole('sync');
                 document.getElementById('header-refresh-action').onclick = () => this.openRefreshConsole('fleet');
                 document.getElementById('opportunities-refresh-action').onclick = () => this.openRefreshConsole('opportunities');
@@ -2370,6 +2467,57 @@
                 }
             },
 
+            async checkDatabasesJSON() {
+                if (!this.isFeatureEnabled('databases')) {
+                    this.databaseData = null;
+                    const syncIndicator = document.getElementById('databases-sync-indicator');
+                    if (syncIndicator) {
+                        syncIndicator.classList.add('hidden');
+                        syncIndicator.classList.remove('flex');
+                    }
+                    const sourceLink = document.getElementById('databases-json-source-link');
+                    if (sourceLink) {
+                        sourceLink.classList.add('hidden');
+                    }
+                    const generatedEl = document.getElementById('databases-json-generated-at');
+                    if (generatedEl) {
+                        generatedEl.classList.add('hidden');
+                    }
+                    return;
+                }
+                try {
+                    const res = await fetch('./fleet_data_databases.json', { cache: 'no-store' });
+                    if (!res.ok) return;
+                    const json = await res.json();
+                    if (Array.isArray(json.databases)) {
+                        this.databaseData = json;
+                        const syncIndicator = document.getElementById('databases-sync-indicator');
+                        if (syncIndicator) {
+                            syncIndicator.classList.remove('hidden');
+                            syncIndicator.classList.add('flex');
+                        }
+                        const sourceLink = document.getElementById('databases-json-source-link');
+                        if (sourceLink) {
+                            sourceLink.classList.remove('hidden');
+                        }
+                        const generatedEl = document.getElementById('databases-json-generated-at');
+                        if (generatedEl) {
+                            if (json.generatedAt) {
+                                generatedEl.textContent = `Generated ${this.formatUtcDisplay(json.generatedAt, false)} UTC`;
+                                generatedEl.classList.remove('hidden');
+                            } else {
+                                generatedEl.classList.add('hidden');
+                            }
+                        }
+                        if (this.currentPortalView === 'databases') {
+                            this.renderDatabaseServices();
+                        }
+                    }
+                } catch (e) {
+                    console.log("Database Services JSON source not found yet.");
+                }
+            },
+
             async checkAnnouncementsJSON() {
                 try {
                     const res = await fetch('./fleet_data_announcements.json', { cache: 'no-store' });
@@ -2405,12 +2553,14 @@
             },
 
             async loadAllSnapshots() {
-                await Promise.allSettled([
+                const snapshotPromises = [
                     this.checkExternalJSON(),
+                    this.isFeatureEnabled('databases') ? this.checkDatabasesJSON() : Promise.resolve(),
                     this.checkShapesJSON(),
                     this.checkOpportunitiesJSON(),
                     this.checkAnnouncementsJSON(),
-                ]);
+                ];
+                await Promise.allSettled(snapshotPromises);
                 await this.refreshSyncDataStatus();
                 if (this.currentCustomer) {
                     this.loadCustomerData();
@@ -2420,6 +2570,7 @@
             async reloadSuccessfulSnapshots(successfulKeys = []) {
                 const reloaders = [];
                 if (successfulKeys.includes('fleet')) reloaders.push(this.checkExternalJSON());
+                if (successfulKeys.includes('databases') && this.isFeatureEnabled('databases')) reloaders.push(this.checkDatabasesJSON());
                 if (successfulKeys.includes('shapes')) reloaders.push(this.checkShapesJSON());
                 if (successfulKeys.includes('opportunities')) reloaders.push(this.checkOpportunitiesJSON());
                 if (successfulKeys.includes('announcements')) reloaders.push(this.checkAnnouncementsJSON());
@@ -2459,6 +2610,7 @@
             getLatestLoadedSnapshotTimestamp() {
                 const candidates = [
                     this.jsonGeneratedAt,
+                    this.databaseData?.generatedAt,
                     this.shapeData?.generatedAt,
                     this.opportunitiesData?.generatedAt,
                     this.announcementsData?.generatedAt,
@@ -2671,6 +2823,7 @@
 
             getRefreshModeConfig(mode = this.currentRefreshMode) {
                 const availableModes = ['fleet', 'sync'];
+                if (this.isFeatureEnabled('databases')) availableModes.push('databases');
                 if (this.isFeatureEnabled('shapes')) availableModes.push('shapes');
                 if (this.isFeatureEnabled('opportunities')) availableModes.push('opportunities');
                 if (this.isFeatureEnabled('announcements')) availableModes.push('announcements');
@@ -2691,6 +2844,22 @@
                         buttonLabel: 'Run Refresh',
                         retryLabel: 'Retry Refresh',
                         runningButtonLabel: 'Refresh Running',
+                    },
+                    databases: {
+                        title: 'OCI Database Services Console',
+                        endpoint: '/api/databases/refresh',
+                        statusEndpoint: '/api/databases/status',
+                        command: 'python3 build_database_data.py --profile DEFAULT --output fleet_data_databases.json',
+                        idleSummary: 'Ready to refresh OCI Database Services data.',
+                        runningSummary: 'Refreshing OCI Database Services data and rebuilding fleet_data_databases.json...',
+                        successSummaryPrefix: 'OCI database services refresh completed successfully',
+                        runningHint: 'The log updates as the collector scans Base Database, Managed MySQL, and Managed PostgreSQL resources.',
+                        successHint: 'The Database Services view will reload the refreshed fleet_data_databases.json automatically.',
+                        failureHint: 'You can fix the issue and run the database services scan again. If OCI API calls seem slow, confirm network routing is healthy and retry.',
+                        timeoutHint: 'If timeouts continue, confirm OCI connectivity and local network routing, then retry the database services scan.',
+                        buttonLabel: 'Run Database Scan',
+                        retryLabel: 'Retry Database Scan',
+                        runningButtonLabel: 'Database Scan Running',
                     },
                     opportunities: {
                         title: 'OCI Opportunities Console',
@@ -2746,6 +2915,7 @@
                         statusEndpoint: '/api/sync/status',
                         command: this.getEnabledSyncModes().map(stepKey => ({
                             fleet: 'python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json',
+                            databases: 'python3 build_database_data.py --profile DEFAULT --output fleet_data_databases.json',
                             shapes: 'python3 build_shape_data.py --profile DEFAULT --output fleet_data_shapes.json',
                             opportunities: 'python3 build_opportunities_data.py --profile DEFAULT --output fleet_data_opportunities.json',
                             announcements: 'python3 build_announcements_data.py --profile DEFAULT --output fleet_data_announcements.json',
@@ -2753,6 +2923,7 @@
                         idleSummary: 'Ready to sync all Tenancy Explorer snapshots.',
                         runningSummary: `Syncing ${this.getEnabledSyncModes().map(stepKey => ({
                             fleet: 'fleet',
+                            databases: 'database services',
                             shapes: 'shapes',
                             opportunities: 'opportunities',
                             announcements: 'console announcements',
@@ -2771,8 +2942,9 @@
             },
 
             async openRefreshConsole(mode = 'fleet') {
-                this.currentRefreshMode = ['fleet', 'shapes', 'sync', 'opportunities', 'announcements'].includes(mode) ? mode : 'fleet';
-                if ((this.currentRefreshMode === 'shapes' && !this.isFeatureEnabled('shapes'))
+                this.currentRefreshMode = ['fleet', 'databases', 'shapes', 'sync', 'opportunities', 'announcements'].includes(mode) ? mode : 'fleet';
+                if ((this.currentRefreshMode === 'databases' && !this.isFeatureEnabled('databases'))
+                    || (this.currentRefreshMode === 'shapes' && !this.isFeatureEnabled('shapes'))
                     || (this.currentRefreshMode === 'opportunities' && !this.isFeatureEnabled('opportunities'))
                     || (this.currentRefreshMode === 'announcements' && !this.isFeatureEnabled('announcements'))) {
                     this.currentRefreshMode = 'fleet';
@@ -2841,6 +3013,8 @@
             buildRefreshEndpointErrorLines(result, endpoint) {
                 const modeLabel = this.currentRefreshMode === 'sync'
                     ? 'Sync Data'
+                    : this.currentRefreshMode === 'databases'
+                    ? 'Database Services'
                     : this.currentRefreshMode === 'announcements'
                     ? 'Console Announcements'
                     : this.currentRefreshMode === 'opportunities'
@@ -2856,6 +3030,9 @@
                 ];
                 if (this.currentRefreshMode === 'announcements') {
                     lines.push('This usually means the browser is still connected to an older portal_server.py process that does not have the new `/api/announcements/*` routes yet.');
+                    lines.push('');
+                } else if (this.currentRefreshMode === 'databases') {
+                    lines.push('This usually means the browser is still connected to an older portal_server.py process that does not have the new `/api/databases/*` routes yet.');
                     lines.push('');
                 } else if (this.currentRefreshMode === 'sync') {
                     lines.push('This usually means the browser is still connected to an older portal_server.py process that does not have the new `/api/sync/*` routes yet.');
@@ -3254,6 +3431,8 @@
                     const statusClass = statusClasses[status] || statusClasses.queued;
                     const countLabel = this.currentRefreshMode === 'announcements'
                         ? 'Announcements'
+                        : this.currentRefreshMode === 'databases'
+                        ? 'Resources'
                         : 'Instances';
                     return `
                         <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
@@ -3322,6 +3501,9 @@
                             if (this.currentRefreshMode === 'opportunities') {
                                 await this.checkOpportunitiesJSON();
                                 if (this.currentPortalView === 'opportunities') this.renderOpportunities();
+                            } else if (this.currentRefreshMode === 'databases') {
+                                await this.checkDatabasesJSON();
+                                if (this.currentPortalView === 'databases') this.renderDatabaseServices();
                             } else if (this.currentRefreshMode === 'shapes') {
                                 await this.checkShapesJSON();
                                 if (this.currentPortalView === 'shapes') this.renderShapeExplorer();
@@ -3352,6 +3534,8 @@
                 const sawTimeout = logs.some(line => String(line).includes('exceeded') && String(line).includes('s'));
                 const refreshLabel = this.currentRefreshMode === 'sync'
                     ? 'OCI sync'
+                    : this.currentRefreshMode === 'databases'
+                    ? 'OCI database services refresh'
                     : this.currentRefreshMode === 'opportunities'
                     ? 'OCI opportunities refresh'
                     : this.currentRefreshMode === 'shapes'
@@ -4053,22 +4237,28 @@
                 this.currentPortalView = this.getAvailablePortalViews().includes(view) ? view : 'fleet';
                 const isOverview = this.currentPortalView === 'overview';
                 const isFleet = this.currentPortalView === 'fleet';
+                const isDatabases = this.currentPortalView === 'databases';
                 const isShapes = this.currentPortalView === 'shapes';
                 const isOpportunities = this.currentPortalView === 'opportunities';
                 const isAnnouncements = this.currentPortalView === 'announcements';
                 document.getElementById('portal-overview-view').classList.toggle('hidden', !isOverview);
                 document.getElementById('portal-fleet-view').classList.toggle('hidden', !isFleet);
+                document.getElementById('portal-databases-view').classList.toggle('hidden', !isDatabases);
                 document.getElementById('portal-shapes-view').classList.toggle('hidden', !isShapes);
                 document.getElementById('portal-opportunities-view').classList.toggle('hidden', !isOpportunities);
                 document.getElementById('portal-announcements-view').classList.toggle('hidden', !isAnnouncements);
                 document.getElementById('export-filtered-btn').classList.toggle('hidden', !isFleet);
                 document.getElementById('portal-tab-overview').classList.toggle('portal-tab-active', isOverview);
                 document.getElementById('portal-tab-fleet').classList.toggle('portal-tab-active', isFleet);
+                document.getElementById('portal-tab-databases').classList.toggle('portal-tab-active', isDatabases);
                 document.getElementById('portal-tab-shapes').classList.toggle('portal-tab-active', isShapes);
                 document.getElementById('portal-tab-opportunities').classList.toggle('portal-tab-active', isOpportunities);
                 document.getElementById('portal-tab-announcements').classList.toggle('portal-tab-active', isAnnouncements);
                 if (isOverview) {
                     this.renderTenancyOverview();
+                }
+                if (isDatabases) {
+                    this.renderDatabaseServices();
                 }
                 if (isShapes) {
                     this.renderShapeExplorer();
@@ -4714,6 +4904,275 @@
                                 </article>
                             `;
                         }).join('')}
+                    </div>
+                `;
+            },
+
+            formatDatabaseServiceLabel(value) {
+                const normalized = String(value || '').toLowerCase();
+                if (normalized === 'basedb') return 'Base Database';
+                if (normalized === 'mysql') return 'Managed MySQL';
+                if (normalized === 'postgresql') return 'Managed PostgreSQL';
+                return normalized
+                    ? normalized.replace(/\b\w/g, (char) => char.toUpperCase())
+                    : '-';
+            },
+
+            getCurrentDatabaseInventory() {
+                if (!this.isFeatureEnabled('databases')) {
+                    return {
+                        generatedAt: '',
+                        source: {
+                            tenancyName: this.currentCustomerLabel || this.currentCustomer || 'Current tenancy',
+                        },
+                        summary: {
+                            totalCount: 0,
+                            serviceCounts: { basedb: 0, mysql: 0, postgresql: 0 },
+                            lifecycleCounts: {},
+                            regionCount: 0,
+                            compartmentCount: 0,
+                            warningCount: 0,
+                        },
+                        customers: [],
+                        databases: [],
+                        warnings: [],
+                    };
+                }
+                if (Array.isArray(this.databaseData?.databases)) {
+                    if (!this.currentCustomer) return this.databaseData;
+                    const filteredRows = this.databaseData.databases.filter(row => String(row.customerId || '') === String(this.currentCustomer || ''));
+                    return {
+                        ...this.databaseData,
+                        databases: filteredRows,
+                    };
+                }
+                return {
+                    generatedAt: '',
+                    source: {
+                        tenancyName: this.currentCustomerLabel || this.currentCustomer || 'Current tenancy',
+                    },
+                    summary: {
+                        totalCount: 0,
+                        serviceCounts: { basedb: 0, mysql: 0, postgresql: 0 },
+                        lifecycleCounts: {},
+                        regionCount: 0,
+                        compartmentCount: 0,
+                        warningCount: 0,
+                    },
+                    customers: [],
+                    databases: [],
+                    warnings: [],
+                };
+            },
+
+            getFilteredDatabaseRows(snapshot = this.getCurrentDatabaseInventory()) {
+                const rows = snapshot?.databases || [];
+                const search = String(this.databaseFilters.search || '').trim().toLowerCase();
+                return rows.filter(row => {
+                    if (this.databaseFilters.service !== 'all' && (row.serviceType || '') !== this.databaseFilters.service) return false;
+                    if (this.databaseFilters.lifecycle !== 'all' && (row.lifecycleState || '') !== this.databaseFilters.lifecycle) return false;
+                    if (this.databaseFilters.region !== 'all' && (row.region || '') !== this.databaseFilters.region) return false;
+                    if (this.databaseFilters.compartment !== 'all' && (row.compartmentName || '') !== this.databaseFilters.compartment) return false;
+                    if (search) {
+                        const haystack = [
+                            row.displayName || '',
+                            row.id || '',
+                            row.serviceType || '',
+                            row.lifecycleState || '',
+                            row.region || '',
+                            row.compartmentName || '',
+                            row.shapeOrTier || '',
+                            row.engineVersion || '',
+                            row.maintenanceStatus || '',
+                        ].join(' ').toLowerCase();
+                        if (!haystack.includes(search)) return false;
+                    }
+                    return true;
+                });
+            },
+
+            setDatabaseFilter(key, value) {
+                this.databaseFilters[key] = value ?? 'all';
+                this.renderDatabaseServices();
+            },
+
+            exportDatabaseCSV() {
+                const snapshot = this.getCurrentDatabaseInventory();
+                const rows = this.getFilteredDatabaseRows(snapshot);
+                const headers = [
+                    'service_type',
+                    'display_name',
+                    'resource_ocid',
+                    'lifecycle_state',
+                    'region',
+                    'compartment_name',
+                    'shape_or_tier',
+                    'engine_version',
+                    'ocpu',
+                    'memory_gb',
+                    'storage_gb',
+                    'maintenance_status',
+                    'maintenance_window_utc',
+                    'time_created_utc',
+                ];
+                const csvLines = [
+                    headers.join(','),
+                    ...rows.map(row => [
+                        row.serviceType || '',
+                        row.displayName || '',
+                        row.id || '',
+                        row.lifecycleState || '',
+                        row.region || '',
+                        row.compartmentName || '',
+                        row.shapeOrTier || '',
+                        row.engineVersion || '',
+                        row.ocpu ?? '',
+                        row.memoryGb ?? '',
+                        row.storageGb ?? '',
+                        row.maintenanceStatus || '',
+                        row.maintenanceWindowUtc || '',
+                        row.timeCreatedUtc || '',
+                    ].map(value => `"${String(value).replaceAll('"', '""')}"`).join(',')),
+                ];
+                const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8' });
+                const anchor = document.createElement('a');
+                anchor.href = URL.createObjectURL(blob);
+                anchor.download = `${(this.currentCustomer || 'tenancy').replaceAll(/[^a-z0-9]+/gi, '_')}_database_export.csv`;
+                anchor.click();
+                URL.revokeObjectURL(anchor.href);
+            },
+
+            renderDatabaseServices() {
+                const summaryBar = document.getElementById('db-summary-bar');
+                const grid = document.getElementById('db-grid-content');
+                if (!this.isFeatureEnabled('databases')) {
+                    document.getElementById('db-stat-total').textContent = '0';
+                    document.getElementById('db-stat-basedb').textContent = '0';
+                    document.getElementById('db-stat-mysql').textContent = '0';
+                    document.getElementById('db-stat-postgresql').textContent = '0';
+                    document.getElementById('db-stat-regions').textContent = '0';
+                    summaryBar.textContent = 'Database Services feature is disabled in app_config.json.';
+                    grid.innerHTML = '<div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[11px] text-slate-500">Enable experimental-features.databases in app_config.json to use this workspace.</div>';
+                    return;
+                }
+
+                const snapshot = this.getCurrentDatabaseInventory();
+                const rows = snapshot?.databases || [];
+                const filteredRows = this.getFilteredDatabaseRows(snapshot);
+
+                const allServices = [...new Set(rows.map(row => row.serviceType).filter(Boolean))].sort();
+                const allLifecycles = [...new Set(rows.map(row => row.lifecycleState).filter(Boolean))].sort();
+                const allRegions = [...new Set(rows.map(row => row.region).filter(Boolean))].sort();
+                const allCompartments = [...new Set(rows.map(row => row.compartmentName).filter(Boolean))].sort();
+
+                const serviceSelect = document.getElementById('db-filter-service');
+                const lifecycleSelect = document.getElementById('db-filter-lifecycle');
+                const regionSelect = document.getElementById('db-filter-region');
+                const compartmentSelect = document.getElementById('db-filter-compartment');
+                const searchInput = document.getElementById('db-search-input');
+
+                if (serviceSelect) {
+                    serviceSelect.innerHTML = `<option value="all">All Services (${this.formatCount(rows.length)})</option>` + allServices.map(value => {
+                        const count = rows.filter(row => (row.serviceType || '') === value).length;
+                        return `<option value="${this.escapeHtml(value)}">${this.escapeHtml(this.formatDatabaseServiceLabel(value))} (${this.formatCount(count)})</option>`;
+                    }).join('');
+                    serviceSelect.value = allServices.includes(this.databaseFilters.service) ? this.databaseFilters.service : 'all';
+                    this.databaseFilters.service = serviceSelect.value;
+                }
+
+                if (lifecycleSelect) {
+                    lifecycleSelect.innerHTML = `<option value="all">All Lifecycles (${this.formatCount(rows.length)})</option>` + allLifecycles.map(value => {
+                        const count = rows.filter(row => (row.lifecycleState || '') === value).length;
+                        return `<option value="${this.escapeHtml(value)}">${this.escapeHtml(value)} (${this.formatCount(count)})</option>`;
+                    }).join('');
+                    lifecycleSelect.value = allLifecycles.includes(this.databaseFilters.lifecycle) ? this.databaseFilters.lifecycle : 'all';
+                    this.databaseFilters.lifecycle = lifecycleSelect.value;
+                }
+
+                if (regionSelect) {
+                    regionSelect.innerHTML = `<option value="all">All Regions (${this.formatCount(allRegions.length)})</option>` + allRegions.map(value => {
+                        const count = rows.filter(row => (row.region || '') === value).length;
+                        return `<option value="${this.escapeHtml(value)}">${this.escapeHtml(value)} (${this.formatCount(count)})</option>`;
+                    }).join('');
+                    regionSelect.value = allRegions.includes(this.databaseFilters.region) ? this.databaseFilters.region : 'all';
+                    this.databaseFilters.region = regionSelect.value;
+                }
+
+                if (compartmentSelect) {
+                    compartmentSelect.innerHTML = `<option value="all">All Compartments (${this.formatCount(allCompartments.length)})</option>` + allCompartments.map(value => {
+                        const count = rows.filter(row => (row.compartmentName || '') === value).length;
+                        return `<option value="${this.escapeHtml(value)}">${this.escapeHtml(value)} (${this.formatCount(count)})</option>`;
+                    }).join('');
+                    compartmentSelect.value = allCompartments.includes(this.databaseFilters.compartment) ? this.databaseFilters.compartment : 'all';
+                    this.databaseFilters.compartment = compartmentSelect.value;
+                }
+
+                if (searchInput && searchInput.value !== (this.databaseFilters.search || '')) {
+                    searchInput.value = this.databaseFilters.search || '';
+                }
+
+                const filteredRegions = [...new Set(filteredRows.map(row => row.region).filter(Boolean))];
+                document.getElementById('db-stat-total').textContent = this.formatCount(filteredRows.length);
+                document.getElementById('db-stat-basedb').textContent = this.formatCount(filteredRows.filter(row => row.serviceType === 'basedb').length);
+                document.getElementById('db-stat-mysql').textContent = this.formatCount(filteredRows.filter(row => row.serviceType === 'mysql').length);
+                document.getElementById('db-stat-postgresql').textContent = this.formatCount(filteredRows.filter(row => row.serviceType === 'postgresql').length);
+                document.getElementById('db-stat-regions').textContent = this.formatCount(filteredRegions.length);
+
+                if (!rows.length) {
+                    summaryBar.textContent = 'No OCI database services snapshot is available yet. Refresh Database Services to build the first snapshot.';
+                    grid.innerHTML = '<div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[11px] text-slate-500">No database service rows are loaded yet.</div>';
+                    return;
+                }
+
+                const warningCount = Number(snapshot?.warnings?.length || 0);
+                summaryBar.textContent = `Showing ${this.formatCount(filteredRows.length)} of ${this.formatCount(rows.length)} database service row(s) across ${this.formatCount(filteredRegions.length)} region(s). Snapshot source: ${snapshot?.source?.tenancyName || 'current tenancy'}.${warningCount ? ` ${this.formatCount(warningCount)} warning(s) were recorded during collection.` : ''}`;
+
+                if (!filteredRows.length) {
+                    grid.innerHTML = '<div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[11px] text-slate-500">No database rows match the current filters.</div>';
+                    return;
+                }
+
+                const orderedRows = [...filteredRows].sort((a, b) => (
+                    String(a.serviceType || '').localeCompare(String(b.serviceType || ''))
+                    || String(a.region || '').localeCompare(String(b.region || ''))
+                    || String(a.displayName || '').localeCompare(String(b.displayName || ''))
+                ));
+                const formatNumeric = (value) => (value === null || value === undefined || value === '' ? '-' : this.escapeHtml(value));
+
+                grid.innerHTML = `
+                    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                        <div class="table-container custom-scrollbar max-h-[760px]">
+                            <table class="w-full text-left border-separate border-spacing-0">
+                                <thead class="sticky top-0 z-20 bg-slate-50">
+                                    <tr>
+                                        ${['Service', 'Display Name', 'Lifecycle', 'Region', 'Compartment', 'Shape/Tier', 'Engine', 'OCPU', 'Memory (GB)', 'Storage (GB)', 'Maintenance', 'Created', 'OCID'].map(header => `<th class="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">${header}</th>`).join('')}
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 text-[11px]">
+                                    ${orderedRows.map(row => `
+                                        <tr>
+                                            <td class="px-4 py-3 text-slate-700">${this.escapeHtml(this.formatDatabaseServiceLabel(row.serviceType))}</td>
+                                            <td class="px-4 py-3 font-black text-[#c74634]">${this.escapeHtml(row.displayName || '-')}</td>
+                                            <td class="px-4 py-3 text-slate-600">${this.escapeHtml(row.lifecycleState || '-')}</td>
+                                            <td class="px-4 py-3 text-slate-600">${this.escapeHtml(row.region || '-')}</td>
+                                            <td class="px-4 py-3 text-slate-600">${this.escapeHtml(row.compartmentName || '-')}</td>
+                                            <td class="px-4 py-3 text-slate-600">${this.escapeHtml(row.shapeOrTier || '-')}</td>
+                                            <td class="px-4 py-3 text-slate-600">${this.escapeHtml(row.engineVersion || '-')}</td>
+                                            <td class="px-4 py-3 text-slate-600">${formatNumeric(row.ocpu)}</td>
+                                            <td class="px-4 py-3 text-slate-600">${formatNumeric(row.memoryGb)}</td>
+                                            <td class="px-4 py-3 text-slate-600">${formatNumeric(row.storageGb)}</td>
+                                            <td class="px-4 py-3 text-slate-600">${this.escapeHtml(row.maintenanceStatus || '-')}</td>
+                                            <td class="px-4 py-3 text-slate-600">${this.escapeHtml(row.timeCreatedUtc || '-')}</td>
+                                            <td class="px-4 py-3 text-slate-600">
+                                                ${row.id
+                                                    ? `<button type="button" onclick='App.openInspectorFromOcid(${JSON.stringify(String(row.id || ''))}, event)' class="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-blue-700 transition-colors hover:bg-blue-100">Open Inspector</button>`
+                                                    : '-'}
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 `;
             },
@@ -6621,6 +7080,7 @@
                 this.pagination.page = 1;
                 document.getElementById('page-size-select').value = String(this.pagination.pageSize);
                 this.renderTenancyOverview();
+                this.renderDatabaseServices();
                 this.renderShapeExplorer();
                 this.render();
                 this.renderOpportunities();

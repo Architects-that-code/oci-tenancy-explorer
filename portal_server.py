@@ -36,10 +36,12 @@ except ImportError:  # pragma: no cover - handled at runtime
 
 ROOT = Path(__file__).resolve().parent
 BUILD_SCRIPT = ROOT / "build_fleet_data.py"
+DATABASES_SCRIPT = ROOT / "build_database_data.py"
 OPPORTUNITIES_SCRIPT = ROOT / "build_opportunities_data.py"
 SHAPES_SCRIPT = ROOT / "build_shape_data.py"
 ANNOUNCEMENTS_SCRIPT = ROOT / "build_announcements_data.py"
 FLEET_JSON = ROOT / "fleet_data.json"
+DATABASES_JSON = ROOT / "fleet_data_databases.json"
 OPPORTUNITIES_JSON = ROOT / "fleet_data_opportunities.json"
 SHAPES_JSON = ROOT / "fleet_data_shapes.json"
 ANNOUNCEMENTS_JSON = ROOT / "fleet_data_announcements.json"
@@ -50,6 +52,7 @@ SUPPORTED_RESOURCE_TYPES = {"instance", "vnic", "subnet", "vcn", "volume", "boot
 DEFAULT_APP_CONFIG = {
     "experimental-features": {
         "overview": False,
+        "databases": False,
         "shapes": True,
         "opportunities": True,
         "announcements": True,
@@ -1084,6 +1087,7 @@ def parse_args() -> argparse.Namespace:
 
 def make_handler(
     fleet_runner: RefreshRunner,
+    databases_runner: RefreshRunner,
     opportunities_runner: RefreshRunner,
     shapes_runner: RefreshRunner,
     announcements_runner: RefreshRunner,
@@ -1098,6 +1102,8 @@ def make_handler(
         config = current_app_config()
         filtered_steps: list[SyncStepDefinition] = []
         for step in sync_runner.step_definitions:
+            if step.key == "databases" and not feature_enabled(config, "databases"):
+                continue
             if step.key == "shapes" and not feature_enabled(config, "shapes"):
                 continue
             if step.key == "opportunities" and not feature_enabled(config, "opportunities"):
@@ -1113,7 +1119,7 @@ def make_handler(
         def _any_single_refresh_running(self) -> bool:
             return any(
                 runner.state.snapshot().get("running")
-                for runner in (fleet_runner, opportunities_runner, shapes_runner, announcements_runner)
+                for runner in (fleet_runner, databases_runner, opportunities_runner, shapes_runner, announcements_runner)
             )
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -1165,6 +1171,9 @@ def make_handler(
             if normalized_path == "/api/opportunities/status":
                 self._send_json(opportunities_runner.state.snapshot())
                 return
+            if normalized_path == "/api/databases/status":
+                self._send_json(databases_runner.state.snapshot())
+                return
             if normalized_path == "/api/shapes/status":
                 self._send_json(shapes_runner.state.snapshot())
                 return
@@ -1186,6 +1195,7 @@ def make_handler(
                 bundle: dict[str, Any] = {"bundleVersion": 1, "exportedAt": utc_now_iso(), "customerName": customer_name}
                 for label, path in [
                     ("fleet_data", FLEET_JSON),
+                    ("fleet_data_databases", DATABASES_JSON),
                     ("fleet_data_shapes", SHAPES_JSON),
                     ("fleet_data_opportunities", OPPORTUNITIES_JSON),
                     ("fleet_data_announcements", ANNOUNCEMENTS_JSON),
@@ -1197,7 +1207,7 @@ def make_handler(
                             bundle[label] = None
                     else:
                         bundle[label] = None
-                if not any(bundle.get(k) for k in ("fleet_data", "fleet_data_shapes", "fleet_data_opportunities", "fleet_data_announcements")):
+                if not any(bundle.get(k) for k in ("fleet_data", "fleet_data_databases", "fleet_data_shapes", "fleet_data_opportunities", "fleet_data_announcements")):
                     self._send_json({"error": "No snapshot files found. Run Sync Data first."}, status=HTTPStatus.NOT_FOUND)
                     return
                 body = json.dumps(bundle).encode("utf-8")
@@ -1234,6 +1244,17 @@ def make_handler(
                 started, message = opportunities_runner.start()
                 status = HTTPStatus.ACCEPTED if started else HTTPStatus.CONFLICT
                 self._send_json({"started": started, "message": message, **opportunities_runner.state.snapshot()}, status=status)
+                return
+            if normalized_path == "/api/databases/refresh":
+                if not feature_enabled(current_app_config(), "databases"):
+                    self._feature_disabled_response("Database Services")
+                    return
+                if sync_runner.state.snapshot().get("running"):
+                    self._send_json({"started": False, "message": "Unified sync is already in progress.", **databases_runner.state.snapshot()}, status=HTTPStatus.CONFLICT)
+                    return
+                started, message = databases_runner.start()
+                status = HTTPStatus.ACCEPTED if started else HTTPStatus.CONFLICT
+                self._send_json({"started": started, "message": message, **databases_runner.state.snapshot()}, status=status)
                 return
             if normalized_path == "/api/shapes/refresh":
                 if not feature_enabled(current_app_config(), "shapes"):
@@ -1294,6 +1315,14 @@ def main() -> int:
         output_path=FLEET_JSON,
         label="OCI fleet collector",
     )
+    databases_runner = RefreshRunner(
+        profile=args.profile,
+        config_file=args.config_file,
+        auth=args.auth,
+        script_path=DATABASES_SCRIPT,
+        output_path=DATABASES_JSON,
+        label="OCI database services collector",
+    )
     opportunities_runner = RefreshRunner(
         profile=args.profile,
         config_file=args.config_file,
@@ -1324,6 +1353,7 @@ def main() -> int:
         auth=args.auth,
         step_definitions=[
             SyncStepDefinition("fleet", "Fleet", BUILD_SCRIPT, FLEET_JSON),
+            SyncStepDefinition("databases", "Database Services", DATABASES_SCRIPT, DATABASES_JSON),
             SyncStepDefinition("shapes", "Shape Explorer", SHAPES_SCRIPT, SHAPES_JSON),
             SyncStepDefinition("opportunities", "Opportunities", OPPORTUNITIES_SCRIPT, OPPORTUNITIES_JSON),
             SyncStepDefinition("announcements", "Console Announcements", ANNOUNCEMENTS_SCRIPT, ANNOUNCEMENTS_JSON),
@@ -1336,6 +1366,7 @@ def main() -> int:
     )
     handler = make_handler(
         fleet_runner,
+        databases_runner,
         opportunities_runner,
         shapes_runner,
         announcements_runner,

@@ -28,6 +28,7 @@ jobs:
         run: |
           python -m py_compile \
             build_fleet_data.py \
+            build_database_data.py \
             build_shape_data.py \
             build_announcements_data.py \
             build_opportunities_data.py \
@@ -36,6 +37,7 @@ jobs:
       - name: Smoke test CLI entrypoints
         run: |
           python build_fleet_data.py --help
+          python build_database_data.py --help
           python build_shape_data.py --help
           python build_announcements_data.py --help
           python build_opportunities_data.py --help
@@ -59,6 +61,28 @@ jobs:
               raise SystemExit("instances must be a list")
 
           print("Sample JSON schema checks passed.")
+          PY
+
+      - name: Validate database sample JSON schema shape
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("fleet_data_sample_json/fleet_data_databases.sample.json").read_text())
+          required_root = {"generatedAt", "generatedAtEpochMs", "schemaVersion", "source", "summary", "customers", "databases", "warnings"}
+          missing = sorted(required_root - payload.keys())
+          if missing:
+              raise SystemExit(f"Missing root keys: {missing}")
+
+          if not isinstance(payload["customers"], list):
+              raise SystemExit("customers must be a list")
+          if not isinstance(payload["databases"], list):
+              raise SystemExit("databases must be a list")
+          if not isinstance(payload["warnings"], list):
+              raise SystemExit("warnings must be a list")
+
+          print("Database sample JSON schema checks passed.")
           PY
 
       - name: Build Docker image

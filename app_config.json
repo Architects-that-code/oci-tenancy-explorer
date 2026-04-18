@@ -1,6 +1,7 @@
 {
   "experimental-features": {
-    "overview": false,
+    "overview": true,
+    "databases": false,
     "shapes": false,
     "opportunities": false,
     "announcements": false

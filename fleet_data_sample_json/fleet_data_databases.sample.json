@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-04-01 12:00:00",
+  "generatedAtEpochMs": 1775044800000,
+  "source": {
+    "tenancyName": "example-tenancy",
+    "tenancyId": "ocid1.tenancy.oc1..example",
+    "authMode": "config",
+    "profile": "DEFAULT",
+    "regionCount": 2,
+    "regions": [
+      "us-ashburn-1",
+      "us-phoenix-1"
+    ],
+    "customerStrategy": "tag",
+    "services": [
+      "basedb",
+      "mysql",
+      "postgresql"
+    ]
+  },
+  "summary": {
+    "totalCount": 3,
+    "serviceCounts": {
+      "basedb": 1,
+      "mysql": 1,
+      "postgresql": 1
+    },
+    "lifecycleCounts": {
+      "AVAILABLE": 3
+    },
+    "regionCount": 2,
+    "compartmentCount": 2,
+    "warningCount": 0
+  },
+  "customers": [
+    {
+      "name": "Acme",
+      "lastImport": 1775044800000,
+      "resourceCount": 3,
+      "basedbCount": 1,
+      "mysqlCount": 1,
+      "postgresqlCount": 1
+    }
+  ],
+  "databases": [
+    {
+      "customerId": "Acme",
+      "id": "ocid1.dbsystem.oc1.iad.examplebasedb",
+      "displayName": "acme-basedb-prod",
+      "serviceType": "basedb",
+      "lifecycleState": "AVAILABLE",
+      "region": "us-ashburn-1",
+      "tenancyId": "ocid1.tenancy.oc1..example",
+      "compartmentId": "ocid1.compartment.oc1..example01",
+      "compartmentName": "Prod",
+      "availabilityDomain": "Uocm:US-ASHBURN-AD-1",
+      "faultDomain": "FAULT-DOMAIN-1",
+      "subnetId": "ocid1.subnet.oc1.iad.examplesubnet1",
+      "shapeOrTier": "VM.Standard3.Flex",
+      "engineVersion": "19c",
+      "ocpu": 2.0,
+      "memoryGb": 32.0,
+      "storageGb": 512.0,
+      "isHighlyAvailable": true,
+      "maintenanceStatus": "Scheduled",
+      "maintenanceWindowUtc": "2026-04-10 02:00:00",
+      "timeCreatedUtc": "2026-03-01 14:00:00",
+      "lastSeenUtc": "2026-04-01 12:00:00",
+      "freeformTags": {
+        "Customer": "Acme"
+      },
+      "definedTags": {},
+      "uniqueKey": "basedb:ocid1.dbsystem.oc1.iad.examplebasedb"
+    },
+    {
+      "customerId": "Acme",
+      "id": "ocid1.mysqldbsystem.oc1.phx.examplemysql",
+      "displayName": "acme-mysql-prod",
+      "serviceType": "mysql",
+      "lifecycleState": "AVAILABLE",
+      "region": "us-phoenix-1",
+      "tenancyId": "ocid1.tenancy.oc1..example",
+      "compartmentId": "ocid1.compartment.oc1..example01",
+      "compartmentName": "Prod",
+      "availabilityDomain": "Uocm:PHX-AD-1",
+      "faultDomain": "FAULT-DOMAIN-1",
+      "subnetId": "ocid1.subnet.oc1.phx.examplesubnet2",
+      "shapeOrTier": "MySQL.2",
+      "engineVersion": "8.0.36",
+      "ocpu": 2.0,
+      "memoryGb": 16.0,
+      "storageGb": 300.0,
+      "isHighlyAvailable": false,
+      "maintenanceStatus": "None",
+      "maintenanceWindowUtc": "",
+      "timeCreatedUtc": "2026-03-15 09:30:00",
+      "lastSeenUtc": "2026-04-01 12:00:00",
+      "freeformTags": {
+        "Customer": "Acme"
+      },
+      "definedTags": {},
+      "uniqueKey": "mysql:ocid1.mysqldbsystem.oc1.phx.examplemysql"
+    },
+    {
+      "customerId": "Acme",
+      "id": "ocid1.postgresqldbsystem.oc1.iad.examplepg",
+      "displayName": "acme-postgresql-dev",
+      "serviceType": "postgresql",
+      "lifecycleState": "AVAILABLE",
+      "region": "us-ashburn-1",
+      "tenancyId": "ocid1.tenancy.oc1..example",
+      "compartmentId": "ocid1.compartment.oc1..example02",
+      "compartmentName": "Dev",
+      "availabilityDomain": "Uocm:US-ASHBURN-AD-2",
+      "faultDomain": "FAULT-DOMAIN-2",
+      "subnetId": "ocid1.subnet.oc1.iad.examplesubnet3",
+      "shapeOrTier": "PostgreSQL.Standard",
+      "engineVersion": "14",
+      "ocpu": 1.0,
+      "memoryGb": 8.0,
+      "storageGb": 100.0,
+      "isHighlyAvailable": false,
+      "maintenanceStatus": "None",
+      "maintenanceWindowUtc": "",
+      "timeCreatedUtc": "2026-03-20 11:10:00",
+      "lastSeenUtc": "2026-04-01 12:00:00",
+      "freeformTags": {
+        "Customer": "Acme"
+      },
+      "definedTags": {},
+      "uniqueKey": "postgresql:ocid1.postgresqldbsystem.oc1.iad.examplepg"
+    }
+  ],
+  "warnings": []
+}
