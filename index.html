@@ -4940,11 +4940,15 @@
                 }
                 if (Array.isArray(this.databaseData?.databases)) {
                     if (!this.currentCustomer) return this.databaseData;
-                    const filteredRows = this.databaseData.databases.filter(row => String(row.customerId || '') === String(this.currentCustomer || ''));
-                    return {
-                        ...this.databaseData,
-                        databases: filteredRows,
-                    };
+                    const allRows = this.databaseData.databases;
+                    const filteredRows = allRows.filter(row => String(row.customerId || '') === String(this.currentCustomer || ''));
+                    if (filteredRows.length) {
+                        return {
+                            ...this.databaseData,
+                            databases: filteredRows,
+                        };
+                    }
+                    return this.databaseData;
                 }
                 return {
                     generatedAt: '',

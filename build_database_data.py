@@ -62,7 +62,7 @@ def parse_args() -> DatabaseArgs:
     parser.add_argument(
         "--customer-strategy",
         choices=["tag", "compartment", "tenancy"],
-        default="tag",
+        default="tenancy",
         help="How resources should be grouped into customer cards.",
     )
     parser.add_argument(

@@ -12,7 +12,7 @@
       "us-ashburn-1",
       "us-phoenix-1"
     ],
-    "customerStrategy": "tag",
+    "customerStrategy": "tenancy",
     "services": [
       "basedb",
       "mysql",
@@ -35,7 +35,7 @@
   },
   "customers": [
     {
-      "name": "Acme",
+      "name": "example-tenancy",
       "lastImport": 1775044800000,
       "resourceCount": 3,
       "basedbCount": 1,
@@ -45,7 +45,7 @@
   ],
   "databases": [
     {
-      "customerId": "Acme",
+      "customerId": "example-tenancy",
       "id": "ocid1.dbsystem.oc1.iad.examplebasedb",
       "displayName": "acme-basedb-prod",
       "serviceType": "basedb",
@@ -74,7 +74,7 @@
       "uniqueKey": "basedb:ocid1.dbsystem.oc1.iad.examplebasedb"
     },
     {
-      "customerId": "Acme",
+      "customerId": "example-tenancy",
       "id": "ocid1.mysqldbsystem.oc1.phx.examplemysql",
       "displayName": "acme-mysql-prod",
       "serviceType": "mysql",
@@ -103,7 +103,7 @@
       "uniqueKey": "mysql:ocid1.mysqldbsystem.oc1.phx.examplemysql"
     },
     {
-      "customerId": "Acme",
+      "customerId": "example-tenancy",
       "id": "ocid1.postgresqldbsystem.oc1.iad.examplepg",
       "displayName": "acme-postgresql-dev",
       "serviceType": "postgresql",
