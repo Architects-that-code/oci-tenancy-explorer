@@ -38,3 +38,4 @@ refresh.log
 *.tfstate.*
 terraform/
 vars
+scratch.txt

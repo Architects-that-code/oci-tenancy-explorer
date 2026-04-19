@@ -97,19 +97,19 @@ def parse_args() -> CollectorArgs:
     parser.add_argument(
         "--maintenance-timeout-seconds",
         type=float,
-        default=20.0,
+        default=60.0,
         help="Maximum seconds to wait per-compartment for instance maintenance events before continuing.",
     )
     parser.add_argument(
         "--osmh-timeout-seconds",
         type=float,
-        default=20.0,
+        default=60.0,
         help="Maximum seconds to wait per-region for OS Management Hub boot data before continuing.",
     )
     parser.add_argument(
         "--compute-timeout-seconds",
         type=float,
-        default=20.0,
+        default=300.0,
         help="Maximum seconds to wait per-compartment for compute instance listing before continuing.",
     )
     parser.add_argument(
