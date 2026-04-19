@@ -62,13 +62,31 @@ python3 -m pip install oci
 python3 build_fleet_data.py --profile DEFAULT --output fleet_data.json
 ```
 
-4. Start the local portal:
+4. Enable Database Services (optional feature flag):
+
+Edit `app_config.json` and set:
+
+```json
+{
+  "experimental-features": {
+    "databases": true
+  }
+}
+```
+
+Optional: build a database snapshot manually before launching:
+
+```bash
+python3 build_database_data.py --profile DEFAULT --output fleet_data_databases.json
+```
+
+5. Start the local portal:
 
 ```bash
 python3 portal_server.py --profile DEFAULT
 ```
 
-5. Open:
+6. Open:
 
 ```text
 http://127.0.0.1:8765/index.html
@@ -77,7 +95,9 @@ http://127.0.0.1:8765/index.html
 Notes:
 - Configure OCI auth via `~/.oci/config` (see `oci_config.example`) or use `--auth instance_principal` when running on OCI compute.
 - Keep `fleet_data.json` local; it contains tenancy metadata.
+- Keep `fleet_data_databases.json` local if generated; it also contains tenancy metadata.
 - In Fleet View, use the column selector to switch between the full table and the `Core Only` operational column set.
+- When `experimental-features.databases` is enabled, the `Database Services` tab and related refresh endpoints are available.
 
 ## Quick Start (Docker)
 
@@ -118,6 +138,10 @@ docker compose up --build
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.oci-instance-principal.yml up --build
 ```
+
+Notes:
+- To include the Database Services workspace, set `experimental-features.databases` to `true` in `app_config.json` before building/running the container.
+- You can then use `Sync Data` or `Refresh Databases` from the UI to generate `fleet_data_databases.json`.
 
 ## Disclaimer (Sample Code)
 
