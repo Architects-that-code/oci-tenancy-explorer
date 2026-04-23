@@ -15,7 +15,7 @@ import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 import oci
 
@@ -39,6 +39,7 @@ from build_fleet_data import (
 
 DEFAULT_OUTPUT = "fleet_data_databases.json"
 SUPPORTED_SERVICES = ("basedb", "mysql", "postgresql")
+T = TypeVar("T")
 
 
 @dataclass
@@ -167,6 +168,17 @@ def safe_collect(label: str, fn: Callable[[], list[Any]], timeout_seconds: float
             return [], f"{label} failed: {exc}"
 
 
+def safe_call(label: str, fn: Callable[[], T], timeout_seconds: float) -> tuple[T | None, str | None]:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(fn)
+        try:
+            return future.result(timeout=timeout_seconds), None
+        except concurrent.futures.TimeoutError:
+            return None, f"{label} exceeded {timeout_seconds:g}s"
+        except Exception as exc:
+            return None, f"{label} failed: {exc}"
+
+
 def list_across_compartments(
     config: dict[str, Any],
     signer: Any,
@@ -216,6 +228,80 @@ def list_across_compartments(
         items.extend(collected)
 
     return items, warnings
+
+
+def derive_mysql_maintenance_values(item: Any) -> tuple[str, str]:
+    maintenance = getattr(item, "maintenance", None)
+    if maintenance is None:
+        return "", ""
+
+    scheduled_dt = parse_any_datetime(getattr(maintenance, "time_scheduled", None))
+    if scheduled_dt is not None:
+        return "SCHEDULED", format_utc_display(scheduled_dt)
+
+    configured_window = _pick(maintenance, ("window_start_time",), "")
+    if configured_window:
+        return "WINDOW_CONFIGURED", str(configured_window)
+
+    return "", ""
+
+
+def enrich_mysql_rows_with_db_details(
+    config: dict[str, Any],
+    signer: Any,
+    region: str,
+    rows: list[dict[str, Any]],
+    compartments: dict[str, dict[str, str]],
+    timeout_seconds: float,
+) -> list[str]:
+    warnings: list[str] = []
+    if not rows:
+        return warnings
+
+    try:
+        client = build_mysql_client(config, signer, region)
+    except Exception as exc:
+        return [f"MySQL DB system detail lookup in {region} unavailable: {exc}"]
+
+    get_method = getattr(client, "get_db_system", None)
+    if get_method is None:
+        return [f"MySQL DB system detail lookup in {region} unavailable: no get_db_system method."]
+
+    for row in rows:
+        db_system_id = str(row.get("id") or "").strip()
+        if not db_system_id:
+            continue
+
+        detail, warning = safe_call(
+            f"MySQL DB system detail lookup in {region} for {db_system_id}",
+            lambda db_system_id=db_system_id: get_method(db_system_id).data,
+            timeout_seconds,
+        )
+        if warning:
+            warnings.append(warning)
+            continue
+        if detail is None:
+            continue
+
+        row["shapeOrTier"] = row.get("shapeOrTier") or _pick(detail, ("shape_name", "shape"), "")
+        row["engineVersion"] = row.get("engineVersion") or _pick(detail, ("mysql_version", "version"), "")
+        row["subnetId"] = row.get("subnetId") or _pick(detail, ("subnet_id",), "")
+        row["ocpu"] = row.get("ocpu") if row.get("ocpu") is not None else _to_float(_pick(detail, ("cpu_core_count", "ocpu_count"), None))
+        row["memoryGb"] = row.get("memoryGb") if row.get("memoryGb") is not None else _to_float(_pick(detail, ("memory_size_in_gbs", "memory_size_in_gb"), None))
+        row["storageGb"] = row.get("storageGb") if row.get("storageGb") is not None else _to_float(_pick(detail, ("data_storage_size_in_gbs", "data_storage_size_in_gb"), None))
+
+        detail_compartment_id = _pick(detail, ("compartment_id",), "")
+        if detail_compartment_id:
+            row["compartmentId"] = detail_compartment_id
+            row["compartmentName"] = compartments.get(detail_compartment_id, {}).get("name", row.get("compartmentName", "Unknown"))
+
+        derived_status, derived_window = derive_mysql_maintenance_values(detail)
+        if derived_status:
+            row["maintenanceStatus"] = derived_status
+        if derived_window:
+            row["maintenanceWindowUtc"] = derived_window
+
+    return warnings
 
 
 def _pick(item: Any, names: tuple[str, ...], default: Any = "") -> Any:
@@ -361,10 +447,21 @@ def process_region(
         "MySQL DB system listing",
     )
     warnings.extend(mysql_warnings)
-    rows.extend(
+    mysql_rows = [
         normalize_database_row(args, item, "mysql", region, tenancy_id, tenancy_name, generated_at_text, compartments)
         for item in mysql_items
+    ]
+    warnings.extend(
+        enrich_mysql_rows_with_db_details(
+            config,
+            signer,
+            region,
+            mysql_rows,
+            compartments,
+            args.timeout_seconds,
+        )
     )
+    rows.extend(mysql_rows)
 
     emit_event("region_phase", region=region, phase="Collecting PostgreSQL", status="running")
     postgres_items, postgres_warnings = list_across_compartments(
