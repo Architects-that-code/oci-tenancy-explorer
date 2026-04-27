@@ -118,7 +118,7 @@ docker run --rm -p 8765:8765 \
   -e OCI_CONFIG_FILE=/home/appuser/.oci/config \
   -v ~/.oci:/home/appuser/.oci:ro \
   -v ~/.ssh:/home/appuser/.ssh:ro \
-  oci-tenancy-explorer
+  ghcr.io/architects-that-code/oci-tenancy-explorer:latest
 ```
 
 3. Open:
