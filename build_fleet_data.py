@@ -254,6 +254,14 @@ def load_signer_and_config(args: CollectorArgs) -> tuple[dict[str, Any], Any]:
         config = {"region": signer.region}
         return config, signer
     config = oci.config.from_file(file_location=args.config_file, profile_name=args.profile)
+    if "security_token_file" in config:
+        token_file = Path(config["security_token_file"]).expanduser()
+        token = token_file.read_text().strip()
+        private_key = oci.signer.load_private_key_from_file(
+            str(Path(config["key_file"]).expanduser()),
+            config.get("pass_phrase"),
+        )
+        return config, oci.auth.signers.SecurityTokenSigner(token, private_key)
     return config, None
 
 
